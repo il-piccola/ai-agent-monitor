@@ -8,7 +8,7 @@
 
 ## Current milestone
 
-Phase 3: track the current task.
+Phase 4: show questions for the human.
 
 ## Completed
 
@@ -95,7 +95,7 @@ Phase 2 therefore meets its success condition.
 
 ## Phase 3 implementation
 
-Phase 3 is implemented in `main` but still needs verification on the N100 deployment.
+Phase 3 is complete and verified end to end.
 
 Implemented behavior:
 
@@ -119,22 +119,38 @@ Local verification completed successfully:
 - `GET /api/progress` still returned HTTP 200 with progress data
 - dashboard markup contains the task API integration
 
+## Phase 3 end-to-end verification
+
+Phase 3 was verified on the N100 deployment:
+
+- the N100 service was updated to the Phase 3 implementation
+- `Phase 3 iPhone test` was started successfully
+- local `/api/task` returned HTTP 200 with the active task
+- Tailscale `/api/task` returned HTTP 200 with the active task
+- the iPhone dashboard displayed `Phase 3 iPhone test`
+- `task done` was executed successfully
+- local and Tailscale `/api/task` returned HTTP 200 with `{"task": null}`
+- the iPhone dashboard returned to `No active task.`
+- Phase 2 progress data continued to work throughout the test
+
+Phase 3 therefore meets its success condition.
+
 ## Next task
 
-On the N100 machine:
+Implement Phase 4: show questions for the human.
 
-1. pull the latest `main`
-2. restart the existing ai-agent-monitor deployment
-3. run `python monitor.py task start "Phase 3 iPhone test"` using the same Python interpreter used for the app
-4. verify that `Current task` on the iPhone shows `Phase 3 iPhone test`
-5. run `python monitor.py task done`
-6. verify that the iPhone returns to `No active task.`
+The intended user-facing operation is approximately:
 
-Do not begin Phase 4 until both iPhone checks succeed.
+```text
+monitor ask "Should I use option A or option B?"
+```
+
+The dashboard should list unanswered questions.
+
+For Phase 4, displaying unanswered questions is enough. Do not implement browser answers yet; that belongs to Phase 5.
 
 ## Not implemented yet
 
-- Phase 3 current-task display verification from the iPhone
 - questions
 - answers
 - artifact registration
