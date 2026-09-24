@@ -41,7 +41,19 @@ A matching stop helper exists at `deploy/tailscale-stop.sh`. Windows PowerShell 
 
 The helper scripts passed shell syntax checks and a local simulation in which occupied backend and Tailscale ports were skipped correctly.
 
-The Windows helper has been executed on the target machine. The backend and Tailscale HTTPS endpoint returned HTTP 200 with all Phase 1 placeholders present. The stop helper removed only its own Serve port and backend process; restarting the helper restored the deployment. The other Serve ports stayed in place. The backend does not start automatically after a Windows reboot.
+The Windows helper has been executed on the target N100 Windows machine. The backend and Tailscale HTTPS endpoint returned HTTP 200 with all Phase 1 placeholders present. The stop helper removed only its own Serve port and backend process; restarting the helper restored the deployment. The other Serve ports stayed in place. The backend does not start automatically after a Windows reboot.
+
+Current verified deployment:
+
+- backend: `127.0.0.1:8765`
+- Tailscale HTTPS port: `9443`
+- tailnet URL: `https://leto.taile04360.ts.net:9443/`
+- backend process at verification time: `monitor.py` PID `26312`
+- N100-local HTTP check: 200
+- N100-to-Tailscale HTTPS check: 200
+- direct iPhone browser check: not yet verified
+
+The Windows deployment changes were pushed to `main`, including commits `f6bf81a9` and `a76161241f1070f00d13bd9acb66d6c617c0d342`.
 
 ## Next task
 
