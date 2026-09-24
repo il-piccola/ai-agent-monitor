@@ -127,3 +127,8 @@ Never commit:
 - secrets copied from monitored projects
 
 The tool should be designed so runtime project data stays local by default.
+
+
+## Current task storage
+
+Phase 3 stores exactly one active task in SQLite. The `current_task` table uses a fixed row ID of 1. Starting another task replaces that row; completing the task deletes it. This keeps the Phase 3 model deliberately small and leaves task history for a later phase if it becomes necessary.
