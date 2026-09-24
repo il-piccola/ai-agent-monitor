@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local runtime data (future phases)
+.agent-monitor/*.db
+.agent-monitor/*.db-shm
+.agent-monitor/*.db-wal
+
+# OS files
+.DS_Store
