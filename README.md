@@ -177,3 +177,16 @@ python monitor.py task done
 ```
 
 The current task is stored in the same local SQLite database and appears in the dashboard through `/api/task`. The dashboard refreshes it every three seconds.
+
+
+## Record a question
+
+Phase 4 lets the agent record a question for the human:
+
+```bash
+python monitor.py ask "Should I use option A or option B?"
+```
+
+Questions are stored in the local SQLite database with an `open` status. The dashboard requests `/api/questions` every three seconds, shows the number of unanswered questions, and lists the newest questions first.
+
+Phase 4 only displays unanswered questions. Answering them from the browser belongs to Phase 5.
