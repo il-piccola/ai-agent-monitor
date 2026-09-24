@@ -73,5 +73,38 @@ class CurrentTaskStorageTests(MonitorStorageTestCase):
             monitor.start_task("   ")
 
 
+class QuestionStorageTests(MonitorStorageTestCase):
+    def test_question_is_persisted(self) -> None:
+        question = monitor.ask_question("Use option A or option B?")
+
+        items = monitor.list_open_questions()
+
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0], question)
+        self.assertTrue(items[0]["created_at"].endswith("Z"))
+
+    def test_questions_are_newest_first(self) -> None:
+        first = monitor.ask_question("First question?")
+        second = monitor.ask_question("Second question?")
+
+        items = monitor.list_open_questions()
+
+        self.assertEqual(
+            [item["question"] for item in items],
+            ["Second question?", "First question?"],
+        )
+        self.assertEqual(items[0]["id"], second["id"])
+        self.assertEqual(items[1]["id"], first["id"])
+
+    def test_question_is_trimmed(self) -> None:
+        question = monitor.ask_question("  Continue with this benchmark?  ")
+
+        self.assertEqual(question["question"], "Continue with this benchmark?")
+
+    def test_empty_question_is_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            monitor.ask_question("   ")
+
+
 if __name__ == "__main__":
     unittest.main()
