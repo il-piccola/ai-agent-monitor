@@ -8,7 +8,7 @@
 
 ## Current milestone
 
-Phase 4: show questions for the human.
+Phase 5: answer questions in the browser.
 
 ## Completed
 
@@ -137,7 +137,7 @@ Phase 3 therefore meets its success condition.
 
 ## Phase 4 implementation
 
-Phase 4 is implemented in `main` but still needs verification on the N100 deployment.
+Phase 4 is complete and verified end to end.
 
 Implemented behavior:
 
@@ -162,22 +162,39 @@ Local verification completed successfully:
 - `GET /api/task` still returned HTTP 200
 - `GET /api/progress` still returned HTTP 200
 
+## Phase 4 end-to-end verification
+
+Phase 4 was verified on the N100 deployment:
+
+- the N100 service was updated to the Phase 4 implementation
+- `Phase 4 iPhone test?` was recorded successfully
+- local dashboard and `/api/questions` returned HTTP 200
+- Tailscale dashboard and `/api/questions` returned HTTP 200
+- `/api/questions` returned `count: 1`
+- the question API included `Phase 4 iPhone test?`
+- Phase 2 `/api/progress` continued to return HTTP 200
+- Phase 3 `/api/task` continued to return HTTP 200
+- the iPhone dashboard displayed `1 unanswered`
+- the iPhone dashboard displayed `Phase 4 iPhone test?`
+
+Phase 4 therefore meets its success condition.
+
 ## Next task
 
-On the N100 machine:
+Implement Phase 5: answer questions in the browser.
 
-1. pull the latest `main`
-2. restart the existing ai-agent-monitor deployment
-3. run `python monitor.py ask "Phase 4 iPhone test?"` using the same Python interpreter used for the app
-4. verify that local and Tailscale `/api/questions` return HTTP 200 and include the question
-5. verify on the iPhone that the Questions count becomes at least `1 unanswered`
-6. verify that `Phase 4 iPhone test?` appears in the Questions list
+The intended workflow is:
 
-Do not begin Phase 5 until the iPhone check succeeds.
+1. an open question appears in the dashboard
+2. the human enters an answer on the iPhone
+3. the answer is stored in SQLite
+4. the question leaves the unanswered list
+5. the agent can read the stored answer later
+
+Do not implement automatic agent resumption in Phase 5.
 
 ## Not implemented yet
 
-- Phase 4 unanswered-question display verification from the iPhone
 - answers
 - artifact registration
 - metrics
