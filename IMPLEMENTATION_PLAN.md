@@ -28,7 +28,7 @@ Success condition: an AI agent can report progress and a human can see it in the
 
 This is the first MVP.
 
-## Phase 3: Track the current task ← current
+## Phase 3: Track the current task ← implementation complete, deployment verification pending
 
 Add commands for starting and completing a task.
 
