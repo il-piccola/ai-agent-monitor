@@ -70,3 +70,42 @@ See:
 ## Repository policy
 
 This repository is public. Do not commit API keys, access tokens, private project data, personal information, or runtime databases.
+
+
+## Serve inside a Tailscale tailnet
+
+The repository includes a helper for deploying the Phase 1 dashboard through Tailscale Serve on a Linux server.
+
+From a checkout on the Tailscale server:
+
+```bash
+git pull
+bash deploy/tailscale-serve.sh
+```
+
+The script:
+
+- keeps the Python backend bound to `127.0.0.1`
+- finds a free backend port in `8765-8799`
+- avoids HTTPS ports `443` and `8443`
+- checks existing Tailscale Serve configuration before choosing an HTTPS port
+- chooses a free Tailscale HTTPS port from `9443-9499` or `10443-10499`
+- starts the monitor in the background
+- verifies that the local dashboard returns HTTP 200
+- configures `tailscale serve --bg` as an HTTPS reverse proxy
+
+The selected ports and process ID are written only to:
+
+```text
+.runtime/ports.env
+```
+
+Runtime files are ignored by Git.
+
+To stop this deployment:
+
+```bash
+bash deploy/tailscale-stop.sh
+```
+
+Tailscale Serve exposes the application only inside the tailnet. This is intentionally different from Tailscale Funnel, which exposes a service to the public internet.
