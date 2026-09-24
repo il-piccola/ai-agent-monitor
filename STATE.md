@@ -37,11 +37,11 @@ A Tailscale Serve deployment helper has been added at `deploy/tailscale-serve.sh
 
 It automatically avoids ports 443 and 8443, checks existing Serve configuration, chooses free ports, starts the Phase 1 monitor, verifies the backend, and configures Tailscale Serve.
 
-A matching stop helper exists at `deploy/tailscale-stop.sh`.
+A matching stop helper exists at `deploy/tailscale-stop.sh`. Windows PowerShell start and stop helpers are also available at `deploy/tailscale-serve.ps1` and `deploy/tailscale-stop.ps1`.
 
 The helper scripts passed shell syntax checks and a local simulation in which occupied backend and Tailscale ports were skipped correctly.
 
-The deployment has **not** been executed on the actual Tailscale server from this chat because no remote shell connection to that server is available here.
+The Windows helper has been executed on the target machine. The backend and Tailscale HTTPS endpoint returned HTTP 200 with all Phase 1 placeholders present. The stop helper removed only its own Serve port and backend process; restarting the helper restored the deployment. The other Serve ports stayed in place. The backend does not start automatically after a Windows reboot.
 
 ## Next task
 
@@ -66,7 +66,7 @@ The exact internal storage and command packaging may be chosen during Phase 2, b
 - SQLite storage
 - packaging as a reusable CLI
 - use from other projects
-- smartphone access
+- direct verification from an iPhone browser
 - Slack, Discord, or Telegram integration
 - automatic agent resume
 - automatic LLM cost calculation

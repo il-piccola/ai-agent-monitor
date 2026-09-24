@@ -74,7 +74,9 @@ This repository is public. Do not commit API keys, access tokens, private projec
 
 ## Serve inside a Tailscale tailnet
 
-The repository includes a helper for deploying the Phase 1 dashboard through Tailscale Serve on a Linux server.
+The repository includes helpers for deploying the Phase 1 dashboard through Tailscale Serve.
+
+### Linux
 
 From a checkout on the Tailscale server:
 
@@ -109,3 +111,23 @@ bash deploy/tailscale-stop.sh
 ```
 
 Tailscale Serve exposes the application only inside the tailnet. This is intentionally different from Tailscale Funnel, which exposes a service to the public internet.
+
+### Windows (PowerShell)
+
+Requirements: Tailscale, PowerShell 7, and an installed Python interpreter available through `uv python find --no-project`.
+
+From the repository directory:
+
+```powershell
+./deploy/tailscale-serve.ps1
+```
+
+The Windows helper chooses unused ports in the same ranges as the Linux helper, checks existing Serve configuration, starts the backend in a hidden process, and writes the selected ports and process ID to `.runtime/ports.env`. It leaves existing Serve ports in place.
+
+To stop this deployment:
+
+```powershell
+./deploy/tailscale-stop.ps1
+```
+
+The backend does not start automatically after a Windows reboot. Run the start helper again after reboot if needed.
