@@ -31,6 +31,18 @@ Phase 1 verification completed successfully:
 - the recent-progress placeholder was present
 - the unanswered-question count was present
 
+## Tailscale deployment helper
+
+A Tailscale Serve deployment helper has been added at `deploy/tailscale-serve.sh`.
+
+It automatically avoids ports 443 and 8443, checks existing Serve configuration, chooses free ports, starts the Phase 1 monitor, verifies the backend, and configures Tailscale Serve.
+
+A matching stop helper exists at `deploy/tailscale-stop.sh`.
+
+The helper scripts passed shell syntax checks and a local simulation in which occupied backend and Tailscale ports were skipped correctly.
+
+The deployment has **not** been executed on the actual Tailscale server from this chat because no remote shell connection to that server is available here.
+
 ## Next task
 
 Implement Phase 2: allow an agent to record a progress message and show it on the dashboard.
