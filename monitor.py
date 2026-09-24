@@ -48,6 +48,16 @@ def connect_db() -> sqlite3.Connection:
         )
         """
     )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS questions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            question TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'open',
+            created_at TEXT NOT NULL
+        )
+        """
+    )
     connection.commit()
     return connection
 
@@ -137,6 +147,49 @@ def complete_task() -> bool:
         return cursor.rowcount > 0
 
 
+def ask_question(question: str) -> dict[str, object]:
+    question = question.strip()
+    if not question:
+        raise ValueError("Question must not be empty.")
+
+    created_at = utc_now()
+
+    with connect_db() as connection:
+        cursor = connection.execute(
+            """
+            INSERT INTO questions (question, status, created_at)
+            VALUES (?, 'open', ?)
+            """,
+            (question, created_at),
+        )
+        question_id = cursor.lastrowid
+
+    return {
+        "id": question_id,
+        "question": question,
+        "created_at": created_at,
+    }
+
+
+def list_open_questions(limit: int = 50) -> list[dict[str, object]]:
+    with connect_db() as connection:
+        rows = connection.execute(
+            """
+            SELECT id, question, created_at
+            FROM questions
+            WHERE status = 'open'
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+
+    return [
+        {"id": row[0], "question": row[1], "created_at": row[2]}
+        for row in rows
+    ]
+
+
 class DashboardHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         path = self.path.split("?", 1)[0]
@@ -151,6 +204,16 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
         if path == "/api/task":
             self._serve_json({"task": get_current_task()})
+            return
+
+        if path == "/api/questions":
+            questions = list_open_questions()
+            self._serve_json(
+                {
+                    "count": len(questions),
+                    "questions": questions,
+                }
+            )
             return
 
         self.send_error(404, "Not Found")
@@ -219,6 +282,15 @@ def parse_task_args(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def parse_ask_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="monitor.py ask",
+        description="Record a question for the human.",
+    )
+    parser.add_argument("question", nargs="+", help="Question to record")
+    return parser.parse_args(argv)
+
+
 def serve(port: int) -> None:
     if not DASHBOARD_PATH.is_file():
         raise SystemExit(f"dashboard.html was not found at {DASHBOARD_PATH}")
@@ -258,6 +330,12 @@ def main() -> None:
             print("Current task completed.")
         else:
             print("No active task.")
+        return
+
+    if len(sys.argv) > 1 and sys.argv[1] == "ask":
+        args = parse_ask_args(sys.argv[2:])
+        question = ask_question(" ".join(args.question))
+        print(f"Question #{question['id']}: {question['question']}")
         return
 
     args = parse_server_args(sys.argv[1:])
