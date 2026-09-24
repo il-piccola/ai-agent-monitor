@@ -8,34 +8,44 @@
 
 ## Current milestone
 
-Phase 1: show a local dashboard.
+Phase 2: record progress.
 
-## Current implementation
+## Completed
 
-The repository has only the project documentation and initial README. The monitoring program and dashboard have not been implemented yet.
+Phase 1 is implemented and verified.
+
+The repository now has:
+
+- `monitor.py`: a dependency-free local HTTP server
+- `dashboard.html`: the initial dashboard
+- `.gitignore`: ignores Python and future local runtime files
+
+The server listens on `127.0.0.1` and uses port `8765` by default.
+
+Phase 1 verification completed successfully:
+
+- Python syntax check passed
+- `GET /` returned HTTP 200
+- the dashboard title was present
+- the current-task placeholder was present
+- the recent-progress placeholder was present
+- the unanswered-question count was present
 
 ## Next task
 
-Implement the smallest local dashboard:
+Implement Phase 2: allow an agent to record a progress message and show it on the dashboard.
 
-1. add the local server program
-2. add a simple HTML dashboard
-3. make it possible to start the server
-4. verify that the dashboard opens in a browser
+The intended user-facing command is approximately:
 
-The initial page should show placeholder states for:
+```text
+monitor progress "Login page completed"
+```
 
-- current task
-- recent progress
-- questions
-
-## After that
-
-Phase 2 will add the first progress-recording command so an AI agent can report a message and a human can see it on the dashboard.
+The exact internal storage and command packaging may be chosen during Phase 2, but later-phase features should not be added yet.
 
 ## Not implemented yet
 
-- progress command
+- progress recording
 - task tracking
 - questions
 - answers
