@@ -62,7 +62,7 @@ Do not force every project into one fixed dashboard.
 
 ## Data storage
 
-The planned local storage is SQLite.
+Local runtime storage uses SQLite.
 
 Reasons:
 
@@ -75,7 +75,7 @@ The agent should interact through the monitor CLI rather than writing SQL direct
 
 Runtime database files must not be committed to Git.
 
-When concurrent reads and writes are implemented, SQLite configuration should be chosen deliberately, including WAL and a busy timeout if appropriate.
+Phase 2 configures SQLite in WAL mode with a 5-second busy timeout so the server can read while progress events are recorded.
 
 ## Agent state and monitor history are different
 
