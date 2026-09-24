@@ -41,7 +41,7 @@ monitor task done
 
 The dashboard should show what the agent is currently working on.
 
-## Phase 4: Show questions for the human ← implementation complete, deployment verification pending
+## Phase 4: Show questions for the human ✅
 
 Allow an agent to record a question.
 
@@ -55,7 +55,7 @@ The dashboard should list unanswered questions.
 
 At first, showing the question is enough.
 
-## Phase 5: Answer questions in the browser
+## Phase 5: Answer questions in the browser ← current
 
 Add an answer field to the dashboard.
 
