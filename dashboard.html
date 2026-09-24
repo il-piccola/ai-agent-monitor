@@ -54,12 +54,25 @@
 
     .empty,
     .timestamp,
-    .load-error {
+    .load-error,
+    .task-started {
       color: GrayText;
     }
 
-    .empty {
+    .empty,
+    .task-title {
       margin: 0;
+    }
+
+    .task-title {
+      overflow-wrap: anywhere;
+      font-size: 1.05rem;
+    }
+
+    .task-started {
+      display: block;
+      margin-top: 6px;
+      font-size: 0.82rem;
     }
 
     .load-error {
@@ -113,7 +126,14 @@
     <div class="grid">
       <section class="card">
         <h2>Current task</h2>
-        <p class="empty">No active task.</p>
+        <p id="task-empty" class="empty">No active task.</p>
+        <div id="task-active" hidden>
+          <p id="task-title" class="task-title"></p>
+          <time id="task-started" class="task-started"></time>
+        </div>
+        <p id="task-error" class="load-error" hidden>
+          Current task could not be loaded. The monitor will try again automatically.
+        </p>
       </section>
 
       <section class="card">
@@ -133,6 +153,12 @@
   </main>
 
   <script>
+    const taskEmpty = document.querySelector("#task-empty");
+    const taskActive = document.querySelector("#task-active");
+    const taskTitle = document.querySelector("#task-title");
+    const taskStarted = document.querySelector("#task-started");
+    const taskError = document.querySelector("#task-error");
+
     const progressList = document.querySelector("#progress-list");
     const progressEmpty = document.querySelector("#progress-empty");
     const progressError = document.querySelector("#progress-error");
@@ -146,6 +172,20 @@
         dateStyle: "short",
         timeStyle: "medium",
       }).format(date);
+    }
+
+    function renderTask(task) {
+      if (!task) {
+        taskActive.hidden = true;
+        taskEmpty.hidden = false;
+        return;
+      }
+
+      taskTitle.textContent = task.title;
+      taskStarted.dateTime = task.started_at;
+      taskStarted.textContent = `Started ${formatTimestamp(task.started_at)}`;
+      taskEmpty.hidden = true;
+      taskActive.hidden = false;
     }
 
     function renderProgress(items) {
@@ -177,6 +217,21 @@
       progressList.hidden = false;
     }
 
+    async function refreshTask() {
+      try {
+        const response = await fetch("/api/task", { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const payload = await response.json();
+        renderTask(payload.task ?? null);
+        taskError.hidden = true;
+      } catch (error) {
+        taskError.hidden = false;
+      }
+    }
+
     async function refreshProgress() {
       try {
         const response = await fetch("/api/progress", { cache: "no-store" });
@@ -192,8 +247,13 @@
       }
     }
 
-    refreshProgress();
-    setInterval(refreshProgress, 3000);
+    function refreshDashboard() {
+      refreshTask();
+      refreshProgress();
+    }
+
+    refreshDashboard();
+    setInterval(refreshDashboard, 3000);
   </script>
 </body>
 </html>
