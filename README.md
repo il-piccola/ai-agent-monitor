@@ -190,3 +190,30 @@ python monitor.py ask "Should I use option A or option B?"
 Questions are stored in the local SQLite database with an `open` status. The dashboard requests `/api/questions` every three seconds, shows the number of unanswered questions, and lists the newest questions first.
 
 Phase 4 only displays unanswered questions. Answering them from the browser belongs to Phase 5.
+
+
+## Answer a question from the dashboard
+
+Phase 5 adds an answer form below each unanswered question.
+
+When the human submits an answer:
+
+- the browser sends it to `POST /api/questions/<id>/answer`
+- the answer and answer time are stored in SQLite
+- the question changes from `open` to `answered`
+- the question disappears from the unanswered list
+- automatic agent resumption does not occur
+
+An agent can read recent stored answers with:
+
+```bash
+python monitor.py answers
+```
+
+The same data is also available from:
+
+```text
+GET /api/answers
+```
+
+Existing Phase 4 databases are migrated automatically by adding the answer columns when the application first opens the database after updating.
