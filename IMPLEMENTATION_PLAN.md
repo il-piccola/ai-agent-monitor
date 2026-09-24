@@ -2,7 +2,7 @@
 
 This project is intentionally developed in small stages. Each stage should be usable and understandable before the next one is added.
 
-## Phase 1: Show a local dashboard
+## Phase 1: Show a local dashboard ✅
 
 Create a small program that starts a local web page.
 
@@ -14,7 +14,7 @@ The page initially shows:
 
 Success condition: a user can start the program and open the dashboard in a browser.
 
-## Phase 2: Record progress
+## Phase 2: Record progress ← current
 
 Add a simple command such as:
 
