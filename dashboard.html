@@ -47,8 +47,16 @@
       background: color-mix(in srgb, Canvas 96%, CanvasText 4%);
     }
 
+    .card-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
     .card h2 {
-      margin: 0 0 12px;
+      margin: 0;
       font-size: 1rem;
     }
 
@@ -86,25 +94,30 @@
       border: 1px solid color-mix(in srgb, CanvasText 20%, transparent);
       border-radius: 999px;
       font-size: 0.85rem;
+      white-space: nowrap;
     }
 
-    .progress-list {
+    .progress-list,
+    .question-list {
       list-style: none;
       margin: 0;
       padding: 0;
     }
 
-    .progress-list li {
+    .progress-list li,
+    .question-list li {
       padding: 12px 0;
       border-top: 1px solid color-mix(in srgb, CanvasText 12%, transparent);
     }
 
-    .progress-list li:first-child {
+    .progress-list li:first-child,
+    .question-list li:first-child {
       padding-top: 0;
       border-top: 0;
     }
 
-    .message {
+    .message,
+    .question-text {
       display: block;
       overflow-wrap: anywhere;
     }
@@ -146,8 +159,15 @@
       </section>
 
       <section class="card">
-        <h2>Questions</h2>
-        <span class="status">0 unanswered</span>
+        <div class="card-heading">
+          <h2>Questions</h2>
+          <span id="question-count" class="status">0 unanswered</span>
+        </div>
+        <p id="questions-empty" class="empty">No unanswered questions.</p>
+        <ul id="question-list" class="question-list" hidden></ul>
+        <p id="questions-error" class="load-error" hidden>
+          Questions could not be loaded. The monitor will try again automatically.
+        </p>
       </section>
     </div>
   </main>
@@ -162,6 +182,11 @@
     const progressList = document.querySelector("#progress-list");
     const progressEmpty = document.querySelector("#progress-empty");
     const progressError = document.querySelector("#progress-error");
+
+    const questionCount = document.querySelector("#question-count");
+    const questionsEmpty = document.querySelector("#questions-empty");
+    const questionList = document.querySelector("#question-list");
+    const questionsError = document.querySelector("#questions-error");
 
     function formatTimestamp(value) {
       const date = new Date(value);
@@ -217,6 +242,36 @@
       progressList.hidden = false;
     }
 
+    function renderQuestions(items) {
+      questionList.replaceChildren();
+      questionCount.textContent = `${items.length} unanswered`;
+
+      if (items.length === 0) {
+        questionList.hidden = true;
+        questionsEmpty.hidden = false;
+        return;
+      }
+
+      for (const item of items) {
+        const row = document.createElement("li");
+        const question = document.createElement("span");
+        const timestamp = document.createElement("time");
+
+        question.className = "question-text";
+        question.textContent = item.question;
+
+        timestamp.className = "timestamp";
+        timestamp.dateTime = item.created_at;
+        timestamp.textContent = formatTimestamp(item.created_at);
+
+        row.append(question, timestamp);
+        questionList.append(row);
+      }
+
+      questionsEmpty.hidden = true;
+      questionList.hidden = false;
+    }
+
     async function refreshTask() {
       try {
         const response = await fetch("/api/task", { cache: "no-store" });
@@ -247,9 +302,25 @@
       }
     }
 
+    async function refreshQuestions() {
+      try {
+        const response = await fetch("/api/questions", { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const payload = await response.json();
+        renderQuestions(Array.isArray(payload.questions) ? payload.questions : []);
+        questionsError.hidden = true;
+      } catch (error) {
+        questionsError.hidden = false;
+      }
+    }
+
     function refreshDashboard() {
       refreshTask();
       refreshProgress();
+      refreshQuestions();
     }
 
     refreshDashboard();
