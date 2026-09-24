@@ -5,199 +5,65 @@
 - Repository: `il-piccola/ai-agent-monitor`
 - Visibility: public
 - Default branch: `main`
+- Completed phases: 1, 2, 3, 4
+- Current phase: 5
 
-## Current milestone
+## Verified deployment
 
-Phase 5: answer questions in the browser.
-
-## Completed
-
-Phase 1 is implemented and verified.
-
-The repository now has:
-
-- `monitor.py`: a dependency-free local HTTP server
-- `dashboard.html`: the initial dashboard
-- `.gitignore`: ignores Python and future local runtime files
-
-The server listens on `127.0.0.1` and uses port `8765` by default.
-
-Phase 1 verification completed successfully:
-
-- Python syntax check passed
-- `GET /` returned HTTP 200
-- the dashboard title was present
-- the current-task placeholder was present
-- the recent-progress placeholder was present
-- the unanswered-question count was present
-
-## Tailscale deployment helper
-
-A Tailscale Serve deployment helper has been added at `deploy/tailscale-serve.sh`.
-
-It automatically avoids ports 443 and 8443, checks existing Serve configuration, chooses free ports, starts the Phase 1 monitor, verifies the backend, and configures Tailscale Serve.
-
-A matching stop helper exists at `deploy/tailscale-stop.sh`. Windows PowerShell start and stop helpers are also available at `deploy/tailscale-serve.ps1` and `deploy/tailscale-stop.ps1`.
-
-The helper scripts passed shell syntax checks and a local simulation in which occupied backend and Tailscale ports were skipped correctly.
-
-The Windows helper has been executed on the target N100 Windows machine. The backend and Tailscale HTTPS endpoint returned HTTP 200 with all Phase 1 placeholders present. The stop helper removed only its own Serve port and backend process; restarting the helper restored the deployment. The other Serve ports stayed in place. The backend does not start automatically after a Windows reboot.
-
-Current verified deployment:
+The app is deployed on the N100 Windows machine through Tailscale Serve.
 
 - backend: `127.0.0.1:8765`
 - Tailscale HTTPS port: `9443`
 - tailnet URL: `https://leto.taile04360.ts.net:9443/`
-- backend process at verification time: `monitor.py` PID `26312`
-- N100-local HTTP check: 200
-- N100-to-Tailscale HTTPS check: 200
-- direct iPhone browser check: verified successfully
+- iPhone access: verified
+- automatic start after Windows reboot: not implemented
 
-The Windows deployment changes were pushed to `main`, including commits `f6bf81a9` and `a76161241f1070f00d13bd9acb66d6c617c0d342`.
+Phases 2 through 4 were verified end to end on the N100 and iPhone:
 
-## Phase 2 implementation
+- progress messages appear on the iPhone
+- current task start/done appears on the iPhone
+- unanswered questions and their count appear on the iPhone
 
-Phase 2 is complete and verified end to end.
+## Phase 5 implementation
 
-Implemented behavior:
-
-- `python monitor.py progress "<message>"` records a progress event
-- progress is stored in `.agent-monitor/monitor.db` using SQLite
-- SQLite uses WAL mode and a 5-second busy timeout
-- `GET /api/progress` returns the latest progress events as JSON
-- the dashboard reloads progress from that endpoint every three seconds
-- progress text is inserted into the page with `textContent`
-- the existing server invocation and Tailscale deployment scripts remain compatible
-
-Local verification completed successfully:
-
-- Python syntax check passed
-- progress command wrote a test event
-- SQLite retained the event
-- dashboard endpoint returned HTTP 200
-- progress API returned HTTP 200 and the expected JSON
-- all 3 standard-library unit tests passed
-
-## Phase 2 end-to-end verification
-
-Phase 2 was verified on the N100 deployment:
-
-- `main` was fast-forwarded to `2f97f5595f8dc19f3369b4cb042d7b3543f62300`
-- backend restarted successfully on `127.0.0.1:8765`
-- Tailscale Serve remained on HTTPS port `9443`
-- `Phase 2 iPhone test` was written to SQLite
-- local dashboard and `/api/progress` returned HTTP 200
-- Tailscale dashboard and `/api/progress` returned HTTP 200
-- the API response contained the recorded progress message
-- the iPhone dashboard displayed `Phase 2 iPhone test`
-
-Phase 2 therefore meets its success condition.
-
-## Phase 3 implementation
-
-Phase 3 is complete and verified end to end.
+Phase 5 is implemented in `main` and needs N100/iPhone verification.
 
 Implemented behavior:
 
-- `python monitor.py task start "<title>"` starts or replaces the current task
-- `python monitor.py task done` clears the current task
-- the current task is stored in SQLite in a singleton `current_task` row
-- `GET /api/task` returns the active task or `null`
-- the dashboard reloads the current task every three seconds
-- the task title is inserted with `textContent`
-- progress recording from Phase 2 remains unchanged
+- each unanswered question has an answer form
+- `POST /api/questions/<id>/answer` stores a browser answer
+- answered questions change from `open` to `answered`
+- answered questions leave `/api/questions` and the dashboard list
+- `GET /api/answers` returns stored answers
+- `python monitor.py answers` prints stored answers for an agent
+- answers and timestamps are stored in SQLite
+- existing Phase 4 databases are migrated automatically
+- the question form is not rebuilt by the 3-second refresh while the user is typing
+- automatic agent resumption is not implemented
 
-Local verification completed successfully:
-
-- Python syntax and storage behavior checked
-- all 7 standard-library unit tests passed
-- starting a task persisted it
-- starting a second task replaced the first
-- completing a task cleared it
-- completing with no active task was handled
-- `GET /api/task` returned HTTP 200 with the expected task
-- `GET /api/progress` still returned HTTP 200 with progress data
-- dashboard markup contains the task API integration
-
-## Phase 3 end-to-end verification
-
-Phase 3 was verified on the N100 deployment:
-
-- the N100 service was updated to the Phase 3 implementation
-- `Phase 3 iPhone test` was started successfully
-- local `/api/task` returned HTTP 200 with the active task
-- Tailscale `/api/task` returned HTTP 200 with the active task
-- the iPhone dashboard displayed `Phase 3 iPhone test`
-- `task done` was executed successfully
-- local and Tailscale `/api/task` returned HTTP 200 with `{"task": null}`
-- the iPhone dashboard returned to `No active task.`
-- Phase 2 progress data continued to work throughout the test
-
-Phase 3 therefore meets its success condition.
-
-## Phase 4 implementation
-
-Phase 4 is complete and verified end to end.
-
-Implemented behavior:
-
-- `python monitor.py ask "<question>"` records a question
-- questions are stored in SQLite with status `open`
-- `GET /api/questions` returns the unanswered count and question list
-- unanswered questions are returned newest first
-- the dashboard refreshes questions every three seconds
-- the Questions badge shows the current unanswered count
-- question text is inserted with `textContent`
-- Phase 2 progress and Phase 3 current-task behavior remain unchanged
-- browser answers are not implemented yet
-
-Local verification completed successfully:
-
-- Python syntax check passed
-- all 11 standard-library unit tests passed
-- question text is trimmed before storage
-- empty questions are rejected
-- multiple questions are returned newest first
-- `GET /api/questions` returned HTTP 200 with the expected count and questions
-- `GET /api/task` still returned HTTP 200
-- `GET /api/progress` still returned HTTP 200
-
-## Phase 4 end-to-end verification
-
-Phase 4 was verified on the N100 deployment:
-
-- the N100 service was updated to the Phase 4 implementation
-- `Phase 4 iPhone test?` was recorded successfully
-- local dashboard and `/api/questions` returned HTTP 200
-- Tailscale dashboard and `/api/questions` returned HTTP 200
-- `/api/questions` returned `count: 1`
-- the question API included `Phase 4 iPhone test?`
-- Phase 2 `/api/progress` continued to return HTTP 200
-- Phase 3 `/api/task` continued to return HTTP 200
-- the iPhone dashboard displayed `1 unanswered`
-- the iPhone dashboard displayed `Phase 4 iPhone test?`
-
-Phase 4 therefore meets its success condition.
+The standard-library test suite now contains 17 tests, including answer storage and Phase 4 database migration. Run it on the N100 before the iPhone verification.
 
 ## Next task
 
-Implement Phase 5: answer questions in the browser.
+On the N100 machine:
 
-The intended workflow is:
+1. pull the latest `main`
+2. run `python -m unittest discover -s tests -v`
+3. restart the existing deployment
+4. keep the existing `Phase 4 iPhone test?` question if it is still open; otherwise create `Phase 5 iPhone test?`
+5. verify local and Tailscale `/api/questions` return the open question
+6. answer the question from the iPhone dashboard with `Phase 5 answer`
+7. verify the unanswered count decreases and the answered question disappears
+8. verify local and Tailscale `/api/answers` contain `Phase 5 answer`
+9. verify `python monitor.py answers` can read the stored answer
 
-1. an open question appears in the dashboard
-2. the human enters an answer on the iPhone
-3. the answer is stored in SQLite
-4. the question leaves the unanswered list
-5. the agent can read the stored answer later
-
-Do not implement automatic agent resumption in Phase 5.
+Do not begin Phase 6 until these checks succeed.
 
 ## Not implemented yet
 
-- answers
+- Phase 5 N100/iPhone verification
 - artifact registration
-- metrics
+- project-specific metrics
 - packaging as a reusable CLI
 - use from other projects
 - Slack, Discord, or Telegram integration
@@ -213,4 +79,4 @@ A new assistant or developer should read, in this order:
 3. `ARCHITECTURE.md`
 4. `STATE.md`
 
-Then continue with the task listed under **Next task**. Do not add later-phase features before the current phase works.
+Then perform the task under **Next task** without adding Phase 6 features.
