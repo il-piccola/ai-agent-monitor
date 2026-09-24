@@ -132,3 +132,8 @@ The tool should be designed so runtime project data stays local by default.
 ## Current task storage
 
 Phase 3 stores exactly one active task in SQLite. The `current_task` table uses a fixed row ID of 1. Starting another task replaces that row; completing the task deletes it. This keeps the Phase 3 model deliberately small and leaves task history for a later phase if it becomes necessary.
+
+
+## Question storage
+
+Phase 4 stores human questions in SQLite with an `open` status. The dashboard only retrieves open questions. Phase 5 may add answers and change a question out of the open state, but Phase 4 does not provide any answer-writing endpoint or browser form.
