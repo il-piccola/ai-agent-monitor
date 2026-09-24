@@ -149,3 +149,12 @@ To stop this deployment:
 ```
 
 The backend does not start automatically after a Windows reboot. Run the start helper again after reboot if needed.
+
+
+## Run tests
+
+The Phase 2 storage tests use only Python's standard library:
+
+```bash
+python -m unittest discover -s tests -v
+```
