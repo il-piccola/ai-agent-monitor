@@ -6,17 +6,13 @@ The goal is to let a human see, at a glance, what an AI agent is doing without r
 
 ## Current status
 
-Phase 1 is complete.
+Phase 1 is complete and has been verified from an iPhone through Tailscale Serve.
 
-The repository now contains a local dashboard server and a static dashboard showing placeholder states for:
+Phase 2 is implemented in the repository and is awaiting verification on the N100 deployment.
 
-- current task
-- recent progress
-- unanswered questions
+Progress messages are now stored in a local SQLite database and exposed to the dashboard through `/api/progress`. The dashboard refreshes the progress list automatically.
 
-Phase 2 will let an agent record progress messages that appear on the dashboard.
-
-## Run the Phase 1 dashboard
+## Run the dashboard
 
 Requirements:
 
@@ -43,7 +39,29 @@ A different local port can be selected with:
 python monitor.py --port 9000
 ```
 
-The server intentionally listens only on `127.0.0.1` during the local-first stages.
+The server intentionally listens only on `127.0.0.1`.
+
+## Record progress
+
+Phase 2 adds progress recording without requiring any external Python package.
+
+From the repository directory:
+
+```bash
+python monitor.py progress "Login page completed"
+```
+
+The message is stored in:
+
+```text
+.agent-monitor/monitor.db
+```
+
+That runtime database is ignored by Git.
+
+While the server is running, the dashboard requests `/api/progress` every three seconds and displays the newest recorded messages first.
+
+The final reusable `monitor progress ...` command will be introduced later when the project is packaged as a shared CLI.
 
 ## Initial goals
 
