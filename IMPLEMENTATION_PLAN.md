@@ -55,7 +55,7 @@ The dashboard should list unanswered questions.
 
 At first, showing the question is enough.
 
-## Phase 5: Answer questions in the browser ← current
+## Phase 5: Answer questions in the browser ← implementation complete, deployment verification pending
 
 Add an answer field to the dashboard.
 
