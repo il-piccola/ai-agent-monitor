@@ -76,6 +76,7 @@ Local verification completed successfully:
 - SQLite retained the event
 - dashboard endpoint returned HTTP 200
 - progress API returned HTTP 200 and the expected JSON
+- all 3 standard-library unit tests passed
 
 ## Next task
 
