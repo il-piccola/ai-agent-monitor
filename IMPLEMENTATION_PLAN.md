@@ -28,7 +28,7 @@ Success condition: an AI agent can report progress and a human can see it in the
 
 This is the first MVP.
 
-## Phase 3: Track the current task ← implementation complete, deployment verification pending
+## Phase 3: Track the current task ✅
 
 Add commands for starting and completing a task.
 
@@ -41,7 +41,7 @@ monitor task done
 
 The dashboard should show what the agent is currently working on.
 
-## Phase 4: Show questions for the human
+## Phase 4: Show questions for the human ← current
 
 Allow an agent to record a question.
 
