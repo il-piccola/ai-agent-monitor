@@ -52,9 +52,19 @@
       font-size: 1rem;
     }
 
+    .empty,
+    .timestamp,
+    .load-error {
+      color: GrayText;
+    }
+
     .empty {
       margin: 0;
-      color: GrayText;
+    }
+
+    .load-error {
+      margin: 12px 0 0;
+      font-size: 0.9rem;
     }
 
     .status {
@@ -63,6 +73,33 @@
       border: 1px solid color-mix(in srgb, CanvasText 20%, transparent);
       border-radius: 999px;
       font-size: 0.85rem;
+    }
+
+    .progress-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .progress-list li {
+      padding: 12px 0;
+      border-top: 1px solid color-mix(in srgb, CanvasText 12%, transparent);
+    }
+
+    .progress-list li:first-child {
+      padding-top: 0;
+      border-top: 0;
+    }
+
+    .message {
+      display: block;
+      overflow-wrap: anywhere;
+    }
+
+    .timestamp {
+      display: block;
+      margin-top: 4px;
+      font-size: 0.82rem;
     }
   </style>
 </head>
@@ -81,7 +118,11 @@
 
       <section class="card">
         <h2>Recent progress</h2>
-        <p class="empty">No progress has been recorded yet.</p>
+        <p id="progress-empty" class="empty">No progress has been recorded yet.</p>
+        <ul id="progress-list" class="progress-list" hidden></ul>
+        <p id="progress-error" class="load-error" hidden>
+          Progress could not be loaded. The monitor will try again automatically.
+        </p>
       </section>
 
       <section class="card">
@@ -90,5 +131,69 @@
       </section>
     </div>
   </main>
+
+  <script>
+    const progressList = document.querySelector("#progress-list");
+    const progressEmpty = document.querySelector("#progress-empty");
+    const progressError = document.querySelector("#progress-error");
+
+    function formatTimestamp(value) {
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) {
+        return value;
+      }
+      return new Intl.DateTimeFormat(undefined, {
+        dateStyle: "short",
+        timeStyle: "medium",
+      }).format(date);
+    }
+
+    function renderProgress(items) {
+      progressList.replaceChildren();
+
+      if (items.length === 0) {
+        progressList.hidden = true;
+        progressEmpty.hidden = false;
+        return;
+      }
+
+      for (const item of items) {
+        const row = document.createElement("li");
+        const message = document.createElement("span");
+        const timestamp = document.createElement("time");
+
+        message.className = "message";
+        message.textContent = item.message;
+
+        timestamp.className = "timestamp";
+        timestamp.dateTime = item.created_at;
+        timestamp.textContent = formatTimestamp(item.created_at);
+
+        row.append(message, timestamp);
+        progressList.append(row);
+      }
+
+      progressEmpty.hidden = true;
+      progressList.hidden = false;
+    }
+
+    async function refreshProgress() {
+      try {
+        const response = await fetch("/api/progress", { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const payload = await response.json();
+        renderProgress(Array.isArray(payload.progress) ? payload.progress : []);
+        progressError.hidden = true;
+      } catch (error) {
+        progressError.hidden = false;
+      }
+    }
+
+    refreshProgress();
+    setInterval(refreshProgress, 3000);
+  </script>
 </body>
 </html>
