@@ -137,3 +137,12 @@ Phase 3 stores exactly one active task in SQLite. The `current_task` table uses 
 ## Question storage
 
 Phase 4 stores human questions in SQLite with an `open` status. The dashboard only retrieves open questions. Phase 5 may add answers and change a question out of the open state, but Phase 4 does not provide any answer-writing endpoint or browser form.
+
+
+## Answer storage
+
+Phase 5 keeps answers in the existing `questions` table. An answered question stores `answer` and `answered_at`, and its status changes from `open` to `answered`.
+
+Existing Phase 4 databases are migrated in place by adding those two nullable columns if they are missing. The browser writes an answer through a same-origin JSON POST endpoint. Answered questions are removed from the unanswered list, while `/api/answers` and `python monitor.py answers` let an agent read them later.
+
+Phase 5 still does not restart or resume an agent automatically.
