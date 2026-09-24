@@ -6,7 +6,7 @@ from unittest.mock import patch
 import monitor
 
 
-class ProgressStorageTests(unittest.TestCase):
+class MonitorStorageTestCase(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
         root = Path(self.temp_dir.name)
@@ -22,6 +22,8 @@ class ProgressStorageTests(unittest.TestCase):
         self.data_dir_patch.stop()
         self.temp_dir.cleanup()
 
+
+class ProgressStorageTests(MonitorStorageTestCase):
     def test_progress_is_persisted_and_newest_is_first(self) -> None:
         first = monitor.record_progress("first")
         second = monitor.record_progress("second")
@@ -41,6 +43,34 @@ class ProgressStorageTests(unittest.TestCase):
     def test_empty_progress_message_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             monitor.record_progress("   ")
+
+
+class CurrentTaskStorageTests(MonitorStorageTestCase):
+    def test_task_can_be_started_and_read(self) -> None:
+        started = monitor.start_task("Build login page")
+
+        current = monitor.get_current_task()
+
+        self.assertEqual(current, started)
+        self.assertEqual(current["title"], "Build login page")
+        self.assertTrue(current["started_at"].endswith("Z"))
+
+    def test_starting_another_task_replaces_current_task(self) -> None:
+        monitor.start_task("First task")
+        second = monitor.start_task("Second task")
+
+        self.assertEqual(monitor.get_current_task(), second)
+
+    def test_completing_task_clears_current_task(self) -> None:
+        monitor.start_task("Temporary task")
+
+        self.assertTrue(monitor.complete_task())
+        self.assertIsNone(monitor.get_current_task())
+        self.assertFalse(monitor.complete_task())
+
+    def test_empty_task_title_is_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            monitor.start_task("   ")
 
 
 if __name__ == "__main__":
