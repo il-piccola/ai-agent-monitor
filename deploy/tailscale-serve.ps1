@@ -6,7 +6,19 @@ $portsFile = Join-Path $runtime 'ports.env'
 $pidFile = Join-Path $runtime 'monitor.pid'
 
 if (Test-Path -LiteralPath $portsFile) {
-    throw "Deployment state already exists at $portsFile. Stop the existing deployment first."
+    $saved = @{}
+    foreach ($line in Get-Content -LiteralPath $portsFile) {
+        if ($line -match '^([A-Z_]+)=(\d+)$') {
+            $saved[$Matches[1]] = [int]$Matches[2]
+        }
+    }
+    if ($saved.ContainsKey('MONITOR_PID') -and $saved.ContainsKey('BACKEND_PORT')) {
+        $previousProcess = Get-CimInstance Win32_Process -Filter "ProcessId = $($saved.MONITOR_PID)"
+        if ($previousProcess -and $previousProcess.CommandLine -like "*monitor.py*--port $($saved.BACKEND_PORT)*") {
+            throw "AI Agent Monitor is already running with state at $portsFile."
+        }
+    }
+    & (Join-Path $PSScriptRoot 'tailscale-stop.ps1') | Out-Null
 }
 
 $python = (& uv python find --no-project).Trim()
