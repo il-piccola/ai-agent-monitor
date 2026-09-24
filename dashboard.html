@@ -63,7 +63,8 @@
     .empty,
     .timestamp,
     .load-error,
-    .task-started {
+    .task-started,
+    .answer-status {
       color: GrayText;
     }
 
@@ -83,9 +84,14 @@
       font-size: 0.82rem;
     }
 
-    .load-error {
-      margin: 12px 0 0;
+    .load-error,
+    .answer-status {
+      margin: 8px 0 0;
       font-size: 0.9rem;
+    }
+
+    .answer-status.error {
+      color: #c62828;
     }
 
     .status {
@@ -105,13 +111,13 @@
     }
 
     .progress-list li,
-    .question-list li {
+    .question-list > li {
       padding: 12px 0;
       border-top: 1px solid color-mix(in srgb, CanvasText 12%, transparent);
     }
 
     .progress-list li:first-child,
-    .question-list li:first-child {
+    .question-list > li:first-child {
       padding-top: 0;
       border-top: 0;
     }
@@ -126,6 +132,41 @@
       display: block;
       margin-top: 4px;
       font-size: 0.82rem;
+    }
+
+    .answer-form {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .answer-input {
+      width: 100%;
+      min-height: 72px;
+      box-sizing: border-box;
+      padding: 10px 12px;
+      border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
+      border-radius: 10px;
+      background: Canvas;
+      color: CanvasText;
+      font: inherit;
+      resize: vertical;
+    }
+
+    .answer-button {
+      justify-self: start;
+      padding: 8px 14px;
+      border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
+      border-radius: 9px;
+      background: ButtonFace;
+      color: ButtonText;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .answer-button:disabled {
+      cursor: wait;
+      opacity: 0.65;
     }
   </style>
 </head>
@@ -242,6 +283,82 @@
       progressList.hidden = false;
     }
 
+    function buildQuestionRow(item) {
+      const row = document.createElement("li");
+      const question = document.createElement("span");
+      const timestamp = document.createElement("time");
+      const form = document.createElement("form");
+      const input = document.createElement("textarea");
+      const button = document.createElement("button");
+      const status = document.createElement("p");
+
+      question.className = "question-text";
+      question.textContent = item.question;
+
+      timestamp.className = "timestamp";
+      timestamp.dateTime = item.created_at;
+      timestamp.textContent = formatTimestamp(item.created_at);
+
+      form.className = "answer-form";
+      input.className = "answer-input";
+      input.name = "answer";
+      input.rows = 2;
+      input.placeholder = "Write an answer...";
+      input.required = true;
+      input.setAttribute("aria-label", `Answer question ${item.id}`);
+
+      button.className = "answer-button";
+      button.type = "submit";
+      button.textContent = "Answer";
+
+      status.className = "answer-status";
+      status.hidden = true;
+
+      form.append(input, button, status);
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const answer = input.value.trim();
+        if (!answer) {
+          status.textContent = "Answer cannot be empty.";
+          status.classList.add("error");
+          status.hidden = false;
+          return;
+        }
+
+        button.disabled = true;
+        input.disabled = true;
+        status.hidden = true;
+        status.classList.remove("error");
+
+        try {
+          const response = await fetch(`/api/questions/${item.id}/answer`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ answer }),
+          });
+          const payload = await response.json();
+          if (!response.ok) {
+            throw new Error(payload.error || `HTTP ${response.status}`);
+          }
+
+          if (document.activeElement instanceof HTMLElement) {
+            document.activeElement.blur();
+          }
+          await refreshQuestions(true);
+        } catch (error) {
+          input.disabled = false;
+          button.disabled = false;
+          status.textContent = error instanceof Error ? error.message : "Answer failed.";
+          status.classList.add("error");
+          status.hidden = false;
+        }
+      });
+
+      row.append(question, timestamp, form);
+      return row;
+    }
+
     function renderQuestions(items) {
       questionList.replaceChildren();
       questionCount.textContent = `${items.length} unanswered`;
@@ -253,19 +370,7 @@
       }
 
       for (const item of items) {
-        const row = document.createElement("li");
-        const question = document.createElement("span");
-        const timestamp = document.createElement("time");
-
-        question.className = "question-text";
-        question.textContent = item.question;
-
-        timestamp.className = "timestamp";
-        timestamp.dateTime = item.created_at;
-        timestamp.textContent = formatTimestamp(item.created_at);
-
-        row.append(question, timestamp);
-        questionList.append(row);
+        questionList.append(buildQuestionRow(item));
       }
 
       questionsEmpty.hidden = true;
@@ -302,7 +407,11 @@
       }
     }
 
-    async function refreshQuestions() {
+    async function refreshQuestions(force = false) {
+      if (!force && questionList.contains(document.activeElement)) {
+        return;
+      }
+
       try {
         const response = await fetch("/api/questions", { cache: "no-store" });
         if (!response.ok) {
