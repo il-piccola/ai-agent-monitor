@@ -14,7 +14,7 @@ The page initially shows:
 
 Success condition: a user can start the program and open the dashboard in a browser.
 
-## Phase 2: Record progress ← implementation complete, deployment verification pending
+## Phase 2: Record progress ✅
 
 Add a simple command such as:
 
@@ -28,7 +28,7 @@ Success condition: an AI agent can report progress and a human can see it in the
 
 This is the first MVP.
 
-## Phase 3: Track the current task
+## Phase 3: Track the current task ← current
 
 Add commands for starting and completing a task.
 
