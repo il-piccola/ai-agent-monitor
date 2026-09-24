@@ -8,7 +8,7 @@
 
 ## Current milestone
 
-Phase 2: record progress.
+Phase 3: track the current task.
 
 ## Completed
 
@@ -57,7 +57,7 @@ The Windows deployment changes were pushed to `main`, including commits `f6bf81a
 
 ## Phase 2 implementation
 
-Phase 2 is implemented in `main` but still needs verification on the N100 deployment.
+Phase 2 is complete and verified end to end.
 
 Implemented behavior:
 
@@ -78,16 +78,35 @@ Local verification completed successfully:
 - progress API returned HTTP 200 and the expected JSON
 - all 3 standard-library unit tests passed
 
+## Phase 2 end-to-end verification
+
+Phase 2 was verified on the N100 deployment:
+
+- `main` was fast-forwarded to `2f97f5595f8dc19f3369b4cb042d7b3543f62300`
+- backend restarted successfully on `127.0.0.1:8765`
+- Tailscale Serve remained on HTTPS port `9443`
+- `Phase 2 iPhone test` was written to SQLite
+- local dashboard and `/api/progress` returned HTTP 200
+- Tailscale dashboard and `/api/progress` returned HTTP 200
+- the API response contained the recorded progress message
+- the iPhone dashboard displayed `Phase 2 iPhone test`
+
+Phase 2 therefore meets its success condition.
+
 ## Next task
 
-On the N100 machine:
+Implement Phase 3: track the current task.
 
-1. pull the latest `main`
-2. restart the existing ai-agent-monitor deployment
-3. record one test progress message
-4. verify that it appears on the iPhone dashboard
+The intended user-facing operations are approximately:
 
-Do not begin Phase 3 until this Phase 2 end-to-end check succeeds.
+```text
+monitor task start "Build login page"
+monitor task done
+```
+
+The dashboard should show the active task while it is running and return to an empty state when it is completed.
+
+Do not begin Phase 4 until Phase 3 is implemented and verified.
 
 ## Not implemented yet
 
@@ -98,7 +117,6 @@ Do not begin Phase 3 until this Phase 2 end-to-end check succeeds.
 - metrics
 - packaging as a reusable CLI
 - use from other projects
-- Phase 2 progress display verification from the iPhone
 - Slack, Discord, or Telegram integration
 - automatic agent resume
 - automatic LLM cost calculation
