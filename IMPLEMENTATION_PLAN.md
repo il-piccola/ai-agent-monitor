@@ -14,7 +14,7 @@ The page initially shows:
 
 Success condition: a user can start the program and open the dashboard in a browser.
 
-## Phase 2: Record progress ← current
+## Phase 2: Record progress ← implementation complete, deployment verification pending
 
 Add a simple command such as:
 
