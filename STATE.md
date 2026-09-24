@@ -135,23 +135,49 @@ Phase 3 was verified on the N100 deployment:
 
 Phase 3 therefore meets its success condition.
 
+## Phase 4 implementation
+
+Phase 4 is implemented in `main` but still needs verification on the N100 deployment.
+
+Implemented behavior:
+
+- `python monitor.py ask "<question>"` records a question
+- questions are stored in SQLite with status `open`
+- `GET /api/questions` returns the unanswered count and question list
+- unanswered questions are returned newest first
+- the dashboard refreshes questions every three seconds
+- the Questions badge shows the current unanswered count
+- question text is inserted with `textContent`
+- Phase 2 progress and Phase 3 current-task behavior remain unchanged
+- browser answers are not implemented yet
+
+Local verification completed successfully:
+
+- Python syntax check passed
+- all 11 standard-library unit tests passed
+- question text is trimmed before storage
+- empty questions are rejected
+- multiple questions are returned newest first
+- `GET /api/questions` returned HTTP 200 with the expected count and questions
+- `GET /api/task` still returned HTTP 200
+- `GET /api/progress` still returned HTTP 200
+
 ## Next task
 
-Implement Phase 4: show questions for the human.
+On the N100 machine:
 
-The intended user-facing operation is approximately:
+1. pull the latest `main`
+2. restart the existing ai-agent-monitor deployment
+3. run `python monitor.py ask "Phase 4 iPhone test?"` using the same Python interpreter used for the app
+4. verify that local and Tailscale `/api/questions` return HTTP 200 and include the question
+5. verify on the iPhone that the Questions count becomes at least `1 unanswered`
+6. verify that `Phase 4 iPhone test?` appears in the Questions list
 
-```text
-monitor ask "Should I use option A or option B?"
-```
-
-The dashboard should list unanswered questions.
-
-For Phase 4, displaying unanswered questions is enough. Do not implement browser answers yet; that belongs to Phase 5.
+Do not begin Phase 5 until the iPhone check succeeds.
 
 ## Not implemented yet
 
-- questions
+- Phase 4 unanswered-question display verification from the iPhone
 - answers
 - artifact registration
 - metrics
