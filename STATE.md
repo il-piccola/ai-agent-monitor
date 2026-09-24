@@ -93,24 +93,48 @@ Phase 2 was verified on the N100 deployment:
 
 Phase 2 therefore meets its success condition.
 
+## Phase 3 implementation
+
+Phase 3 is implemented in `main` but still needs verification on the N100 deployment.
+
+Implemented behavior:
+
+- `python monitor.py task start "<title>"` starts or replaces the current task
+- `python monitor.py task done` clears the current task
+- the current task is stored in SQLite in a singleton `current_task` row
+- `GET /api/task` returns the active task or `null`
+- the dashboard reloads the current task every three seconds
+- the task title is inserted with `textContent`
+- progress recording from Phase 2 remains unchanged
+
+Local verification completed successfully:
+
+- Python syntax and storage behavior checked
+- all 7 standard-library unit tests passed
+- starting a task persisted it
+- starting a second task replaced the first
+- completing a task cleared it
+- completing with no active task was handled
+- `GET /api/task` returned HTTP 200 with the expected task
+- `GET /api/progress` still returned HTTP 200 with progress data
+- dashboard markup contains the task API integration
+
 ## Next task
 
-Implement Phase 3: track the current task.
+On the N100 machine:
 
-The intended user-facing operations are approximately:
+1. pull the latest `main`
+2. restart the existing ai-agent-monitor deployment
+3. run `python monitor.py task start "Phase 3 iPhone test"` using the same Python interpreter used for the app
+4. verify that `Current task` on the iPhone shows `Phase 3 iPhone test`
+5. run `python monitor.py task done`
+6. verify that the iPhone returns to `No active task.`
 
-```text
-monitor task start "Build login page"
-monitor task done
-```
-
-The dashboard should show the active task while it is running and return to an empty state when it is completed.
-
-Do not begin Phase 4 until Phase 3 is implemented and verified.
+Do not begin Phase 4 until both iPhone checks succeed.
 
 ## Not implemented yet
 
-- task tracking
+- Phase 3 current-task display verification from the iPhone
 - questions
 - answers
 - artifact registration
