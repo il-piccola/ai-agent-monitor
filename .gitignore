@@ -4,7 +4,8 @@ __pycache__/
 .venv/
 venv/
 
-# Local runtime data (future phases)
+# Local runtime data
+.runtime/
 .agent-monitor/*.db
 .agent-monitor/*.db-shm
 .agent-monitor/*.db-wal
