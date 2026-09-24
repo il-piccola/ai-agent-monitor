@@ -51,34 +51,53 @@ Current verified deployment:
 - backend process at verification time: `monitor.py` PID `26312`
 - N100-local HTTP check: 200
 - N100-to-Tailscale HTTPS check: 200
-- direct iPhone browser check: not yet verified
+- direct iPhone browser check: verified successfully
 
 The Windows deployment changes were pushed to `main`, including commits `f6bf81a9` and `a76161241f1070f00d13bd9acb66d6c617c0d342`.
 
+## Phase 2 implementation
+
+Phase 2 is implemented in `main` but still needs verification on the N100 deployment.
+
+Implemented behavior:
+
+- `python monitor.py progress "<message>"` records a progress event
+- progress is stored in `.agent-monitor/monitor.db` using SQLite
+- SQLite uses WAL mode and a 5-second busy timeout
+- `GET /api/progress` returns the latest progress events as JSON
+- the dashboard reloads progress from that endpoint every three seconds
+- progress text is inserted into the page with `textContent`
+- the existing server invocation and Tailscale deployment scripts remain compatible
+
+Local verification completed successfully:
+
+- Python syntax check passed
+- progress command wrote a test event
+- SQLite retained the event
+- dashboard endpoint returned HTTP 200
+- progress API returned HTTP 200 and the expected JSON
+
 ## Next task
 
-Implement Phase 2: allow an agent to record a progress message and show it on the dashboard.
+On the N100 machine:
 
-The intended user-facing command is approximately:
+1. pull the latest `main`
+2. restart the existing ai-agent-monitor deployment
+3. record one test progress message
+4. verify that it appears on the iPhone dashboard
 
-```text
-monitor progress "Login page completed"
-```
-
-The exact internal storage and command packaging may be chosen during Phase 2, but later-phase features should not be added yet.
+Do not begin Phase 3 until this Phase 2 end-to-end check succeeds.
 
 ## Not implemented yet
 
-- progress recording
 - task tracking
 - questions
 - answers
 - artifact registration
 - metrics
-- SQLite storage
 - packaging as a reusable CLI
 - use from other projects
-- direct verification from an iPhone browser
+- Phase 2 progress display verification from the iPhone
 - Slack, Discord, or Telegram integration
 - automatic agent resume
 - automatic LLM cost calculation
