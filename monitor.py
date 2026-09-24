@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sqlite3
 import sys
 from datetime import datetime, timezone
@@ -13,16 +14,35 @@ from pathlib import Path
 
 HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
+MAX_JSON_BODY = 64 * 1024
 ROOT_PATH = Path(__file__).resolve().parent
 DASHBOARD_PATH = ROOT_PATH / "dashboard.html"
 DATA_DIR = ROOT_PATH / ".agent-monitor"
 DB_PATH = DATA_DIR / "monitor.db"
 
 
+class QuestionNotFoundError(Exception):
+    pass
+
+
+class QuestionClosedError(Exception):
+    pass
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace(
         "+00:00", "Z"
     )
+
+
+def _ensure_question_columns(connection: sqlite3.Connection) -> None:
+    columns = {
+        row[1] for row in connection.execute("PRAGMA table_info(questions)").fetchall()
+    }
+    if "answer" not in columns:
+        connection.execute("ALTER TABLE questions ADD COLUMN answer TEXT")
+    if "answered_at" not in columns:
+        connection.execute("ALTER TABLE questions ADD COLUMN answered_at TEXT")
 
 
 def connect_db() -> sqlite3.Connection:
@@ -54,10 +74,13 @@ def connect_db() -> sqlite3.Connection:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             question TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'open',
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            answer TEXT,
+            answered_at TEXT
         )
         """
     )
+    _ensure_question_columns(connection)
     connection.commit()
     return connection
 
@@ -190,6 +213,66 @@ def list_open_questions(limit: int = 50) -> list[dict[str, object]]:
     ]
 
 
+def answer_question(question_id: int, answer: str) -> dict[str, object]:
+    answer = answer.strip()
+    if not answer:
+        raise ValueError("Answer must not be empty.")
+
+    answered_at = utc_now()
+
+    with connect_db() as connection:
+        row = connection.execute(
+            "SELECT question, status FROM questions WHERE id = ?",
+            (question_id,),
+        ).fetchone()
+
+        if row is None:
+            raise QuestionNotFoundError(f"Question {question_id} does not exist.")
+        if row[1] != "open":
+            raise QuestionClosedError(f"Question {question_id} is already answered.")
+
+        connection.execute(
+            """
+            UPDATE questions
+            SET status = 'answered', answer = ?, answered_at = ?
+            WHERE id = ?
+            """,
+            (answer, answered_at, question_id),
+        )
+
+    return {
+        "id": question_id,
+        "question": row[0],
+        "answer": answer,
+        "answered_at": answered_at,
+    }
+
+
+def list_answered_questions(limit: int = 50) -> list[dict[str, object]]:
+    with connect_db() as connection:
+        rows = connection.execute(
+            """
+            SELECT id, question, answer, created_at, answered_at
+            FROM questions
+            WHERE status = 'answered'
+            ORDER BY answered_at DESC, id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+
+    return [
+        {
+            "id": row[0],
+            "question": row[1],
+            "answer": row[2],
+            "created_at": row[3],
+            "answered_at": row[4],
+        }
+        for row in rows
+    ]
+
+
 class DashboardHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         path = self.path.split("?", 1)[0]
@@ -216,7 +299,55 @@ class DashboardHandler(BaseHTTPRequestHandler):
             )
             return
 
+        if path == "/api/answers":
+            self._serve_json({"answers": list_answered_questions()})
+            return
+
         self.send_error(404, "Not Found")
+
+    def do_POST(self) -> None:
+        path = self.path.split("?", 1)[0]
+        match = re.fullmatch(r"/api/questions/(\d+)/answer", path)
+        if match is None:
+            self.send_error(404, "Not Found")
+            return
+
+        try:
+            body = self._read_json_body()
+            answer = body.get("answer")
+            if not isinstance(answer, str):
+                raise ValueError("JSON field 'answer' must be a string.")
+            answered = answer_question(int(match.group(1)), answer)
+        except QuestionNotFoundError as exc:
+            self._serve_json({"error": str(exc)}, status=404)
+            return
+        except QuestionClosedError as exc:
+            self._serve_json({"error": str(exc)}, status=409)
+            return
+        except (ValueError, json.JSONDecodeError) as exc:
+            self._serve_json({"error": str(exc)}, status=400)
+            return
+
+        self._serve_json({"answered": answered})
+
+    def _read_json_body(self) -> dict[str, object]:
+        length_header = self.headers.get("Content-Length")
+        if length_header is None:
+            raise ValueError("Content-Length is required.")
+
+        try:
+            length = int(length_header)
+        except ValueError as exc:
+            raise ValueError("Invalid Content-Length.") from exc
+
+        if length < 0 or length > MAX_JSON_BODY:
+            raise ValueError("Request body is too large.")
+
+        raw = self.rfile.read(length)
+        payload = json.loads(raw.decode("utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("JSON body must be an object.")
+        return payload
 
     def _serve_dashboard(self) -> None:
         try:
@@ -232,10 +363,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(content)
 
-    def _serve_json(self, data: object) -> None:
+    def _serve_json(self, data: object, status: int = 200) -> None:
         payload = json.dumps(data, ensure_ascii=False).encode("utf-8")
 
-        self.send_response(200)
+        self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(payload)))
         self.send_header("Cache-Control", "no-store")
@@ -336,6 +467,10 @@ def main() -> None:
         args = parse_ask_args(sys.argv[2:])
         question = ask_question(" ".join(args.question))
         print(f"Question #{question['id']}: {question['question']}")
+        return
+
+    if len(sys.argv) > 1 and sys.argv[1] == "answers":
+        print(json.dumps({"answers": list_answered_questions()}, ensure_ascii=False, indent=2))
         return
 
     args = parse_server_args(sys.argv[1:])
