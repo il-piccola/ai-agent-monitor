@@ -158,3 +158,22 @@ The Phase 2 storage tests use only Python's standard library:
 ```bash
 python -m unittest discover -s tests -v
 ```
+
+
+## Track the current task
+
+Phase 3 adds one active task at a time.
+
+Start or replace the current task:
+
+```bash
+python monitor.py task start "Build login page"
+```
+
+Complete the current task:
+
+```bash
+python monitor.py task done
+```
+
+The current task is stored in the same local SQLite database and appears in the dashboard through `/api/task`. The dashboard refreshes it every three seconds.
