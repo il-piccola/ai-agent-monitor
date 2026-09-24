@@ -41,7 +41,7 @@ monitor task done
 
 The dashboard should show what the agent is currently working on.
 
-## Phase 4: Show questions for the human ← current
+## Phase 4: Show questions for the human ← implementation complete, deployment verification pending
 
 Allow an agent to record a question.
 
