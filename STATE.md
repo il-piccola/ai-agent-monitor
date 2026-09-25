@@ -48,7 +48,7 @@ Phase 8 verification is complete. Phase 9 is the next planned phase; wait for a 
 
 ## Local workspace note
 
-`uv tool install --force .` generated untracked `build/` and `ai_agent_monitor.egg-info/` directories in the checkout. A cleanup attempt was blocked by the workspace policy; leave these directories intact unless cleanup is authorized through an approved method.
+`uv tool install --force .` may generate `build/` and `*.egg-info/` directories in the checkout. These build artifacts are ignored by Git. They do not need to be deleted for the repository to have a clean Git status.
 
 ## Handoff instruction
 
