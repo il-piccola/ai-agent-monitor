@@ -109,22 +109,25 @@ Success condition: two different monitored projects can be opened from the iPhon
 Separate application-level authentication, public internet hosting, messaging integrations, and automatic agent resume remain outside this phase.
 
 
-## Phase 10: Windows logon startup ← implementation complete, N100 verification pending
+## Phase 10: Windows logon startup ← revised implementation complete, N100 verification pending
 
-Add optional Windows Task Scheduler integration so a project's tailnet monitor can return after Windows user logon.
+Add optional per-user Windows logon startup so a project's tailnet monitor can return without administrator rights.
 
-The first implementation:
+The implementation:
 
 - provides `monitor startup install|status|remove`
-- creates a project-specific `ONLOGON` scheduled task
-- uses a task name derived from the project ID
+- writes a project-specific launcher into the current user's Windows Startup folder
+- uses a launcher filename derived from the project ID
 - launches the installed package from the saved project directory
 - checks whether the remote is already healthy before starting another one
 - retries while Tailscale is still initializing
-- removes only the current project's verified task and local startup files
+- removes only the current project's verified launcher and local startup files
 - supports Windows only; other platforms fail explicitly
+- does not require Task Scheduler administrator permissions
 
-Success condition: after installing startup for a test project and signing out/restarting into the user session, the project's Tailscale endpoint returns without manually running `monitor remote start`, while unrelated Tailscale Serve entries remain unchanged.
+The earlier Task Scheduler version was rejected after N100 verification returned `Access is denied` for the normal `LETO\ilpic` account.
+
+Success condition: after installing startup for a test project and signing out/restarting into the same user session, the project's Tailscale endpoint returns without manually running `monitor remote start`, while unrelated Tailscale Serve entries remain unchanged.
 
 ## Explicitly out of scope for the first MVP
 
