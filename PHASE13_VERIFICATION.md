@@ -199,3 +199,20 @@ The first Scenario B task reached a genuine human decision. The human answered `
 This attempt does **not** prove the fresh-run continuation requirement. The later Codex execution received context from the original conversation through the task-creation flow, so it had access to both monitor state and prior conversation history. The evidence therefore cannot establish that monitor state alone was sufficient for recovery.
 
 Scenario B remains incomplete. Repeat the continuation test with a Codex chat opened independently from the original conversation. The independent chat must receive only a short continuation request and must not inherit or quote the original transcript.
+
+
+### N100 Scenario B independent continuation
+
+Scenario B passed on an independent Codex execution with no inherited conversation history. The human decision was `A（短いエラーを保つ）`, submitted through the monitor dashboard.
+
+The independent Codex run recovered the active task and stored answer from monitor state, inspected the verification script and related tests, and determined that the selected short-error behavior was already implemented. It therefore preserved the existing behavior rather than making an unnecessary code change. It ran `scripts/tests/test_verify_hermes_tree_digest.ps1` successfully, recorded progress consistent with the stored answer, and completed the monitor task.
+
+The final monitor state had no current task and no unanswered question. Existing unrelated uncommitted changes were left intact. No service or port configuration was changed.
+
+This verifies the Phase 13 fresh-run requirement: the later Codex run could reconstruct the relevant task and human decision from the repository instructions and monitor state without relying on the original chat transcript.
+
+## Phase 13 result
+
+Scenario A and Scenario B both passed in a real Codex project. The only blocking defect discovered during verification was the missing-CLI-path assumption from Scenario A attempt 1; version 0.12.1 fixed it and added regression coverage.
+
+The v1.0 gate is satisfied for the Codex workflow. A second non-Codex agent remains optional portability evidence rather than a release requirement.
