@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import os
 import json
 import mimetypes
 import re
@@ -1050,12 +1051,16 @@ def startup_script_path() -> Path:
     return remote_runtime_dir() / "startup.ps1"
 
 
-def startup_task_name() -> str:
-    return f"AI Agent Monitor {project_id()}"
+def startup_launcher_name() -> str:
+    return f"AI Agent Monitor {project_id()}.cmd"
 
 
 def _powershell_single_quote(value: str) -> str:
     return value.replace("'", "''")
+
+
+def _cmd_quote(value: str) -> str:
+    return '"' + value.replace('"', '""') + '"'
 
 
 def _require_windows_startup() -> None:
@@ -1063,23 +1068,23 @@ def _require_windows_startup() -> None:
         raise RuntimeError("Startup integration is currently supported only on Windows.")
 
 
-def _schtasks_command(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+def windows_startup_dir() -> Path:
     _require_windows_startup()
-    try:
-        return subprocess.run(
-            ["schtasks", *args],
-            capture_output=True,
-            text=True,
-            timeout=15,
-            check=check,
-        )
-    except FileNotFoundError as exc:
-        raise RuntimeError("Windows Task Scheduler CLI (schtasks) was not found.") from exc
-    except subprocess.CalledProcessError as exc:
-        message = (exc.stderr or exc.stdout or str(exc)).strip()
-        raise RuntimeError(f"Task Scheduler command failed: {message}") from exc
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError("Task Scheduler command timed out.") from exc
+    appdata = os.environ.get("APPDATA")
+    if not appdata:
+        raise RuntimeError("APPDATA is not set; the Windows Startup folder cannot be located.")
+    return (
+        Path(appdata)
+        / "Microsoft"
+        / "Windows"
+        / "Start Menu"
+        / "Programs"
+        / "Startup"
+    )
+
+
+def startup_launcher_path() -> Path:
+    return windows_startup_dir() / startup_launcher_name()
 
 
 def read_startup_state() -> dict[str, object] | None:
@@ -1108,18 +1113,10 @@ def _write_startup_state(state: dict[str, object]) -> None:
     temporary.replace(startup_state_path())
 
 
-def startup_install() -> dict[str, object]:
-    _require_windows_startup()
-    init_project(False)
-
-    runtime = remote_runtime_dir()
-    runtime.mkdir(parents=True, exist_ok=True)
-
-    script_path = startup_script_path()
-    project_path = _powershell_single_quote(str(PROJECT_ROOT))
-    python_path = _powershell_single_quote(str(Path(sys.executable).resolve()))
-
-    script = (
+def _startup_powershell_script(python_executable: str, project_root: str) -> str:
+    project_path = _powershell_single_quote(project_root)
+    python_path = _powershell_single_quote(python_executable)
+    return (
         "$ErrorActionPreference = 'Continue'\n"
         f"Set-Location -LiteralPath '{project_path}'\n"
         f"$python = '{python_path}'\n"
@@ -1137,44 +1134,57 @@ def startup_install() -> dict[str, object]:
         "}\n"
         "exit 1\n"
     )
-    script_path.write_text(script, encoding="utf-8")
 
-    task_name = startup_task_name()
-    task_command = (
-        'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass '
-        f'-WindowStyle Hidden -File "{script_path}"'
+
+def _startup_cmd_launcher(script_path: Path) -> str:
+    powershell = "powershell.exe"
+    return (
+        "@echo off\r\n"
+        f'start "" /min {powershell} -NoProfile -NonInteractive '
+        "-ExecutionPolicy Bypass -WindowStyle Hidden -File "
+        f"{_cmd_quote(str(script_path))}\r\n"
     )
 
-    created = False
+
+def startup_install() -> dict[str, object]:
+    _require_windows_startup()
+    init_project(False)
+
+    runtime = remote_runtime_dir()
+    runtime.mkdir(parents=True, exist_ok=True)
+
+    python_executable = str(Path(sys.executable).resolve())
+    script_path = startup_script_path()
+    launcher_path = startup_launcher_path()
+    launcher_path.parent.mkdir(parents=True, exist_ok=True)
+
+    script_path.write_text(
+        _startup_powershell_script(python_executable, str(PROJECT_ROOT)),
+        encoding="utf-8",
+    )
+
+    launcher_created = False
     try:
-        _schtasks_command(
-            "/Create",
-            "/SC",
-            "ONLOGON",
-            "/TN",
-            task_name,
-            "/TR",
-            task_command,
-            "/F",
+        launcher_path.write_text(
+            _startup_cmd_launcher(script_path),
+            encoding="utf-8",
         )
-        created = True
+        launcher_created = True
 
         state = {
             "project_root": str(PROJECT_ROOT),
             "project_id": project_id(),
-            "task_name": task_name,
+            "mode": "startup-folder",
+            "launcher_path": str(launcher_path),
             "script_path": str(script_path),
-            "python_executable": str(Path(sys.executable).resolve()),
+            "python_executable": python_executable,
             "installed_at": utc_now(),
         }
         _write_startup_state(state)
         return state
     except Exception:
-        if created:
-            try:
-                _schtasks_command("/Delete", "/TN", task_name, "/F", check=False)
-            except RuntimeError:
-                pass
+        if launcher_created:
+            launcher_path.unlink(missing_ok=True)
         script_path.unlink(missing_ok=True)
         raise
 
@@ -1182,22 +1192,21 @@ def startup_install() -> dict[str, object]:
 def startup_status() -> dict[str, object]:
     _require_windows_startup()
     state = read_startup_state()
-    task_name = startup_task_name()
+    expected_launcher = startup_launcher_path()
 
-    result = _schtasks_command(
-        "/Query",
-        "/TN",
-        task_name,
-        "/FO",
-        "LIST",
-        "/V",
-        check=False,
-    )
+    installed = expected_launcher.is_file()
+    state_matches = False
+    if state is not None:
+        state_matches = (
+            state.get("project_root") == str(PROJECT_ROOT)
+            and state.get("project_id") == project_id()
+            and state.get("mode") == "startup-folder"
+            and state.get("launcher_path") == str(expected_launcher)
+        )
 
-    installed = result.returncode == 0
     return {
-        "installed": installed,
-        "task_name": task_name,
+        "installed": installed and state_matches,
+        "launcher_path": str(expected_launcher),
         "state": state,
     }
 
@@ -1213,27 +1222,24 @@ def startup_remove() -> dict[str, object]:
             "Startup state belongs to a different project; refusing to remove it."
         )
 
-    expected_task = startup_task_name()
-    if state.get("task_name") != expected_task:
+    if state.get("project_id") != project_id():
         raise RuntimeError(
-            "Startup task name does not match this project; refusing to remove it."
+            "Startup project ID does not match this project; refusing to remove it."
         )
 
-    query = _schtasks_command(
-        "/Query",
-        "/TN",
-        expected_task,
-        "/FO",
-        "LIST",
-        "/V",
-        check=False,
-    )
-    if query.returncode == 0:
-        _schtasks_command("/Delete", "/TN", expected_task, "/F")
+    expected_launcher = startup_launcher_path()
+    if (
+        state.get("mode") != "startup-folder"
+        or state.get("launcher_path") != str(expected_launcher)
+    ):
+        raise RuntimeError(
+            "Startup launcher does not match this project; refusing to remove it."
+        )
 
+    expected_launcher.unlink(missing_ok=True)
     startup_state_path().unlink(missing_ok=True)
     startup_script_path().unlink(missing_ok=True)
-    return {"removed": True, "task_name": expected_task}
+    return {"removed": True, "launcher_path": str(expected_launcher)}
 
 
 class DashboardHandler(BaseHTTPRequestHandler):
