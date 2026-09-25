@@ -862,5 +862,116 @@ class AgentStatusTests(MonitorStorageTestCase):
         self.assertEqual(payload["recent_progress"][0]["message"], "CLI status")
 
 
+class AgentOnboardingTests(MonitorStorageTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.project_root_patch = patch.object(monitor, "PROJECT_ROOT", self.root)
+        self.project_root_patch.start()
+
+    def tearDown(self) -> None:
+        self.project_root_patch.stop()
+        super().tearDown()
+
+    def test_codex_install_preserves_existing_agents_content(self) -> None:
+        agents = self.root / "AGENTS.md"
+        agents.write_text("# Existing instructions\n\nKeep this text.\n", encoding="utf-8")
+
+        result = monitor.install_agent_integration("codex")
+
+        content = agents.read_text(encoding="utf-8")
+        self.assertIn("# Existing instructions", content)
+        self.assertIn("Keep this text.", content)
+        self.assertEqual(content.count(monitor.AGENTS_BLOCK_START), 1)
+        self.assertEqual(content.count(monitor.AGENTS_BLOCK_END), 1)
+        self.assertTrue(Path(result["contract"]).is_file())
+        self.assertTrue(Path(result["skill"]).is_file())
+
+    def test_codex_install_is_idempotent_and_updates_managed_files(self) -> None:
+        monitor.install_agent_integration("codex")
+        monitor.agent_contract_target().write_text("old contract", encoding="utf-8")
+        monitor.codex_skill_target().write_text("old skill", encoding="utf-8")
+
+        monitor.install_agent_integration("codex")
+
+        agents = monitor.agents_file_path().read_text(encoding="utf-8")
+        self.assertEqual(agents.count(monitor.AGENTS_BLOCK_START), 1)
+        self.assertEqual(
+            monitor.agent_contract_target().read_text(encoding="utf-8"),
+            monitor.AGENT_CONTRACT_PATH.read_text(encoding="utf-8"),
+        )
+        self.assertEqual(
+            monitor.codex_skill_target().read_text(encoding="utf-8"),
+            monitor.CODEX_SKILL_PATH.read_text(encoding="utf-8"),
+        )
+
+    def test_codex_install_refuses_invalid_markers_before_writing_files(self) -> None:
+        monitor.agents_file_path().write_text(
+            monitor.AGENTS_BLOCK_START + "\nmissing end\n",
+            encoding="utf-8",
+        )
+
+        with self.assertRaises(RuntimeError):
+            monitor.install_agent_integration("codex")
+
+        self.assertFalse(monitor.agent_contract_target().exists())
+        self.assertFalse(monitor.codex_skill_target().exists())
+
+    def test_codex_remove_preserves_unrelated_agents_content(self) -> None:
+        agents = self.root / "AGENTS.md"
+        agents.write_text("# Existing\n", encoding="utf-8")
+        monitor.install_agent_integration("codex")
+
+        result = monitor.remove_agent_integration("codex")
+
+        self.assertIn(str(agents), result["removed"])
+        self.assertEqual(agents.read_text(encoding="utf-8"), "# Existing\n")
+        self.assertFalse(monitor.agent_contract_target().exists())
+        self.assertFalse(monitor.codex_skill_target().exists())
+
+    def test_codex_remove_refuses_modified_skill_without_partial_removal(self) -> None:
+        monitor.install_agent_integration("codex")
+        monitor.codex_skill_target().write_text("user edit", encoding="utf-8")
+        agents_before = monitor.agents_file_path().read_text(encoding="utf-8")
+
+        with self.assertRaises(RuntimeError):
+            monitor.remove_agent_integration("codex")
+
+        self.assertEqual(
+            monitor.agents_file_path().read_text(encoding="utf-8"),
+            agents_before,
+        )
+        self.assertTrue(monitor.agent_contract_target().exists())
+        self.assertTrue(monitor.codex_skill_target().exists())
+
+    def test_generic_install_and_remove_do_not_create_codex_files(self) -> None:
+        monitor.install_agent_integration("generic")
+
+        self.assertTrue(monitor.agent_contract_target().is_file())
+        self.assertFalse(monitor.agents_file_path().exists())
+        self.assertFalse(monitor.codex_skill_target().exists())
+
+        monitor.remove_agent_integration("generic")
+        self.assertFalse(monitor.agent_contract_target().exists())
+
+    def test_emit_generic_returns_agent_neutral_contract(self) -> None:
+        emitted = monitor.emit_agent_integration("generic")
+        self.assertEqual(
+            emitted,
+            monitor.AGENT_CONTRACT_PATH.read_text(encoding="utf-8"),
+        )
+
+    def test_emit_codex_contains_managed_block_and_skill(self) -> None:
+        emitted = monitor.emit_agent_integration("codex")
+        self.assertIn(monitor.AGENTS_BLOCK_START, emitted)
+        self.assertIn("name: ai-agent-monitor", emitted)
+
+    def test_bundled_contract_matches_repository_contract(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        self.assertEqual(
+            monitor.AGENT_CONTRACT_PATH.read_bytes(),
+            (repo_root / "AGENT_INTEGRATION.md").read_bytes(),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
