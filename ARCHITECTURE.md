@@ -207,14 +207,17 @@ The older repository-specific Tailscale deployment scripts remain for backward c
 
 ## Windows logon persistence
 
-Phase 10 uses Windows Task Scheduler for optional per-project startup.
+Phase 10 uses the current Windows user's Startup folder for optional per-project startup. This avoids the administrator requirement encountered with the first Task Scheduler implementation on the N100.
 
-`monitor startup install` writes a small PowerShell launcher under the project's ignored `.agent-monitor/runtime/` directory and registers an `ONLOGON` scheduled task. The task name contains the project's hashed project ID, which keeps projects independent.
+`monitor startup install` writes two ignored runtime files for the current project:
 
-The launcher uses the Python executable from the installed `ai-agent-monitor` tool environment rather than depending on the user's PATH. It changes to the saved project root before running the package.
+- `.agent-monitor/runtime/startup.ps1`, which contains the remote health check and retry logic
+- a project-specific `.cmd` launcher in the current user's Windows Startup folder
 
-At logon, the launcher first asks `monitor remote status` whether both the backend and Tailscale Serve mapping are already healthy. Otherwise it retries `remote start` up to 12 times with a five-second delay, allowing time for Tailscale to initialize.
+The launcher name contains the project's hashed project ID, which keeps projects independent. It uses the Python executable from the installed `ai-agent-monitor` tool environment rather than depending on the user's PATH, and it changes to the saved project root before running the package.
 
-Removal is conservative: the local startup state must belong to the current project and the saved task name must match the task name derived from the current project ID before deletion is attempted.
+At logon, the PowerShell script first asks `monitor remote status` whether both the backend and Tailscale Serve mapping are already healthy. Otherwise it retries `remote start` up to 12 times with a five-second delay, allowing time for Tailscale to initialize.
 
-This is user-logon persistence, not a pre-login Windows service.
+Removal is conservative: the local startup state must belong to the current project, the stored project ID must match, and the saved launcher path must equal the launcher path derived for the current user and project before deletion is attempted.
+
+This is per-user post-login persistence. It is not a pre-login Windows service and does not require switching to an administrator account.
