@@ -219,5 +219,76 @@ class ArtifactStorageTests(MonitorStorageTestCase):
         self.assertIsNone(monitor.get_latest_artifact())
 
 
+class MetricStorageTests(MonitorStorageTestCase):
+    def test_metric_can_be_set_and_listed(self) -> None:
+        metric = monitor.set_metric(
+            "cost.total",
+            "90.71",
+            label="Total cost",
+            unit="USD",
+        )
+
+        self.assertEqual(monitor.list_metrics(), [metric])
+        self.assertEqual(metric["key"], "cost.total")
+        self.assertEqual(metric["label"], "Total cost")
+        self.assertEqual(metric["value"], "90.71")
+        self.assertEqual(metric["unit"], "USD")
+        self.assertTrue(metric["updated_at"].endswith("Z"))
+
+    def test_updating_value_preserves_existing_label_and_unit(self) -> None:
+        monitor.set_metric(
+            "cost.total",
+            "90.71",
+            label="Total cost",
+            unit="USD",
+        )
+
+        updated = monitor.set_metric("cost.total", "91.20")
+
+        self.assertEqual(updated["label"], "Total cost")
+        self.assertEqual(updated["unit"], "USD")
+        self.assertEqual(updated["value"], "91.20")
+        self.assertEqual(len(monitor.list_metrics()), 1)
+
+    def test_empty_unit_clears_existing_unit(self) -> None:
+        monitor.set_metric("errors", "2", label="Errors", unit="count")
+
+        updated = monitor.set_metric("errors", "3", unit="")
+
+        self.assertIsNone(updated["unit"])
+
+    def test_default_label_is_metric_key(self) -> None:
+        metric = monitor.set_metric("benchmark.score", "0.87")
+
+        self.assertEqual(metric["label"], "benchmark.score")
+        self.assertIsNone(metric["unit"])
+
+    def test_metrics_are_sorted_by_key(self) -> None:
+        monitor.set_metric("zeta", "2")
+        monitor.set_metric("Alpha", "1")
+
+        self.assertEqual(
+            [metric["key"] for metric in monitor.list_metrics()],
+            ["Alpha", "zeta"],
+        )
+
+    def test_metric_can_be_deleted(self) -> None:
+        monitor.set_metric("errors", "2")
+
+        self.assertTrue(monitor.delete_metric("errors"))
+        self.assertFalse(monitor.delete_metric("errors"))
+        self.assertEqual(monitor.list_metrics(), [])
+
+    def test_invalid_metric_input_is_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            monitor.set_metric("bad key", "1")
+
+        with self.assertRaises(ValueError):
+            monitor.set_metric("good.key", "   ")
+
+        with self.assertRaises(ValueError):
+            monitor.set_metric("good.key", "1", label="   ")
+
+
 if __name__ == "__main__":
     unittest.main()
