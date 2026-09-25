@@ -6,7 +6,7 @@ from contextlib import closing
 from pathlib import Path
 from unittest.mock import patch
 
-import monitor
+import ai_agent_monitor.app as monitor
 
 
 class MonitorStorageTestCase(unittest.TestCase):
@@ -288,6 +288,44 @@ class MetricStorageTests(MonitorStorageTestCase):
 
         with self.assertRaises(ValueError):
             monitor.set_metric("good.key", "1", label="   ")
+
+
+class ProjectBoundaryTests(MonitorStorageTestCase):
+    def test_init_project_creates_runtime_gitignore(self) -> None:
+        with patch.object(monitor, "PROJECT_ROOT", self.root):
+            result = monitor.init_project(False)
+
+        ignore_path = self.root / ".agent-monitor" / ".gitignore"
+        self.assertTrue(ignore_path.is_file())
+        self.assertIn("monitor.db", ignore_path.read_text(encoding="utf-8"))
+        self.assertEqual(result["data_dir"], str(self.root / ".agent-monitor"))
+
+    def test_init_project_can_copy_project_dashboard(self) -> None:
+        bundled = self.root / "bundled.html"
+        bundled.write_text("<h1>default</h1>", encoding="utf-8")
+
+        with (
+            patch.object(monitor, "PROJECT_ROOT", self.root),
+            patch.object(monitor, "DEFAULT_DASHBOARD_PATH", bundled),
+        ):
+            result = monitor.init_project(True)
+
+        project_dashboard = self.root / ".agent-monitor" / "dashboard.html"
+        self.assertTrue(result["dashboard_created"])
+        self.assertEqual(
+            project_dashboard.read_text(encoding="utf-8"),
+            "<h1>default</h1>",
+        )
+
+    def test_project_dashboard_overrides_bundled_dashboard(self) -> None:
+        bundled = self.root / "bundled.html"
+        bundled.write_text("bundled", encoding="utf-8")
+        project_dashboard = self.root / ".agent-monitor" / "dashboard.html"
+        project_dashboard.parent.mkdir(parents=True, exist_ok=True)
+        project_dashboard.write_text("project", encoding="utf-8")
+
+        with patch.object(monitor, "DEFAULT_DASHBOARD_PATH", bundled):
+            self.assertEqual(monitor.dashboard_path(), project_dashboard)
 
 
 if __name__ == "__main__":
