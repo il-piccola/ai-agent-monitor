@@ -210,29 +210,142 @@ Success condition: the complete human/agent loop works in a real project with no
 
 If the success condition is met and no blocking defects remain, release `1.0.0`.
 
-## Phase 14: Notifications
+## Release v1.0.0: Formal GitHub release ← in progress
 
-Optional post-v1 work.
+Freeze the verified Phase 13 result as the first formal release.
 
-Add outbound notification adapters only after the dashboard workflow is proven in real use. Candidate adapters include Slack, Discord, and Telegram.
+Work:
 
-The monitor database remains the source of truth. A notification is a delivery mechanism, not a second question/answer store.
+- prepare release notes
+- verify the final release-preparation commit in CI
+- create Git tag `v1.0.0`
+- create the GitHub Release from that tag
+- verify the tag resolves to the intended commit and the release notes describe both capabilities and known limits
 
-## Phase 15: Runner-specific automatic resume
+Do not add functional changes while preparing the release.
 
-Optional post-v1 work.
+## Phase 14: Diagnostics and recovery
 
-Add automatic continuation only through explicit runner adapters. Do not put Codex-specific resume logic into the core monitor.
+Add read-only operational diagnosis before increasing automation.
 
-The first implementation must define what event resumes a run, how duplicate resumes are prevented, and what happens when an answer arrives after the original run is no longer resumable.
+Primary command:
 
-## Phase 16: Automatic telemetry
+```text
+monitor doctor
+```
 
-Optional post-v1 work.
+Initial checks should cover:
 
-Add collectors for values that can be measured reliably, such as tool failures, elapsed time, or provider-reported cost.
+- CLI/package version
+- project identity and runtime paths
+- SQLite readability and schema compatibility
+- current task and unanswered-question state
+- agent onboarding files and managed-block consistency
+- stale or inconsistent runtime state
+- backend process identity
+- Tailscale Serve mapping consistency when remote access is configured
+- runtime log growth and other actionable local warnings
 
-Do not infer cost or quality from incomplete data. Project-defined manual metrics remain supported.
+Provide machine-readable output in addition to concise human output.
+
+Do not add broad automatic repair in the first implementation. Diagnosis and repair remain separate until concrete safe fixes are defined.
+
+Success condition: healthy state is reported clearly, and deliberately introduced DB/runtime/remote inconsistencies are identified without destructive changes.
+
+## Phase 15: Durable notifications
+
+Notify the human when attention is required without making an external messaging service the source of truth.
+
+Add a durable notification outbox with enough state to distinguish creation, delivery, retry, and failure. Notification events should reference the monitor entity that caused them, such as a question ID.
+
+Implement one notification adapter first. Add additional adapters only after the event/outbox boundary is proven.
+
+Required failure behavior:
+
+- temporary delivery failure remains pending
+- retry does not create duplicate logical notifications
+- process restart does not lose pending notifications
+- successful delivery is recorded
+
+Success condition: a real agent question reaches the user's iPhone without the dashboard already being open, while SQLite remains the authoritative question/answer store.
+
+## Phase 16: Runner lifecycle and automatic resume
+
+Model runner state before automatically starting or resuming an agent.
+
+Keep runner-specific behavior behind adapters. Do not put Codex-specific resume logic into the monitor core.
+
+Distinguish:
+
+- human answer
+- resume request
+- resume attempt
+- runner state
+
+At minimum, runner state must distinguish running, waiting for human input, stopped, completed, and failed.
+
+Required safety behavior:
+
+- one answer cannot create duplicate concurrent resumes
+- a completed task is not resumed
+- a missing or expired runner is handled explicitly
+- restart/recovery does not silently launch duplicate agents
+- failures remain inspectable
+
+Success condition: after a human answers from the iPhone, the appropriate Codex workflow continues and completes without the human manually starting another run.
+
+## Phase 17: Multi-project registry
+
+Provide one human entry point for multiple monitored projects without merging their project databases.
+
+The registry should consume stable monitor status/health boundaries rather than reading every project's SQLite schema directly.
+
+Show at least:
+
+- project identity
+- current task
+- unanswered-question count
+- last activity
+- health/availability
+- project dashboard link
+
+Success condition: the user can open one iPhone URL, see which projects need attention, and navigate to each independent dashboard.
+
+## Phase 18: Automatic telemetry
+
+Collect only measurements that can be observed reliably.
+
+Candidate measurements include:
+
+- task/run duration
+- tool failures
+- question count
+- human wait time
+- resume count
+- provider-reported token/cost/cache values when authoritative data is available
+
+Keep manual project metrics supported. Automatically collected metrics should record their source and observation time.
+
+Do not infer cost, quality, or error rates from incomplete data.
+
+Success condition: useful operational measurements appear without human entry and their provenance is clear.
+
+## Phase 19: Second-agent portability verification
+
+Verify the agent-neutral contract with one non-Codex CLI-capable agent.
+
+Repeat the core Phase 13 loop:
+
+- read status
+- manage task/progress
+- ask a real human question
+- receive the iPhone answer
+- continue from a fresh run
+- complete the task
+
+Prefer adapter/instruction changes over monitor-core changes.
+
+Success condition: the same monitor core supports the second agent without vendor-specific state leaking into the core model.
 
 ## Explicitly out of scope for the first MVP
 
