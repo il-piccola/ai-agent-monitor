@@ -456,3 +456,47 @@ The payload includes `schema_version: 1`. Recent progress and answered-question 
 Reading status does not acknowledge answers, close questions, or complete tasks. On a project with no monitor database yet, it returns an empty status snapshot without creating the database.
 
 Agent behavior is defined in `AGENT_INTEGRATION.md`. The contract is intentionally independent of Codex or another specific runner. Phase 12 will add project onboarding for Codex and other agents; Phase 11 does not install agent instructions into other repositories.
+
+
+## Agent onboarding
+
+Phase 12 adds project-level onboarding without copying the monitor source repository.
+
+For Codex:
+
+```bash
+monitor agent install codex
+```
+
+This installs three project files:
+
+- a short AI Agent Monitor managed block in the repository-level `AGENTS.md`
+- `.agents/skills/ai-agent-monitor/SKILL.md`
+- `AI_AGENT_MONITOR.md`, the agent-neutral monitor contract
+
+Existing text outside the managed `AGENTS.md` block is preserved. Re-running the command updates the monitor-owned block and files without adding duplicate blocks.
+
+Remove the Codex integration with:
+
+```bash
+monitor agent remove codex
+```
+
+Removal deletes only the monitor-owned block and unchanged monitor-owned files. If the generated contract or skill was edited after installation, removal refuses to delete that modified file.
+
+For another CLI-capable agent that does not use Codex repository skills:
+
+```bash
+monitor agent install generic
+```
+
+This installs only `AI_AGENT_MONITOR.md`. Point that agent's own instruction mechanism at the file.
+
+To print instructions without changing the project:
+
+```bash
+monitor agent emit generic
+monitor agent emit codex
+```
+
+Phase 12 does not automatically start an agent, resume a run, or modify vendor-specific configuration outside the files above.
