@@ -622,6 +622,9 @@ class WindowsStartupTests(MonitorStorageTestCase):
         self.assertTrue(script_path.is_file())
         script = script_path.read_text(encoding="utf-8")
         self.assertIn("-m ai_agent_monitor remote start", script)
+        self.assertIn("-m ai_agent_monitor remote status", script)
+        self.assertIn("Start-Sleep -Seconds 5", script)
+        self.assertIn("$attempt -lt 12", script)
         self.assertIn(str(monitor.PROJECT_ROOT), script)
 
         create_args = calls[0][0]
