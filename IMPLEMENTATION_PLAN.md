@@ -91,7 +91,7 @@ Other projects should call the installed CLI instead of copying this repository 
 
 Each monitored project may keep its own configuration, dashboard, and local runtime database.
 
-## Phase 9: Remote and smartphone access ← implementation complete, deployment verification pending
+## Phase 9: Remote and smartphone access ✅
 
 Add reusable remote access for installed-CLI projects through Tailscale Serve.
 
