@@ -28,6 +28,9 @@ from typing import Iterator
 HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 MAX_JSON_BODY = 64 * 1024
+STATUS_SCHEMA_VERSION = 1
+STATUS_PROGRESS_LIMIT = 10
+STATUS_ANSWER_LIMIT = 10
 PACKAGE_PATH = Path(__file__).resolve().parent
 PROJECT_ROOT = Path.cwd().resolve()
 DEFAULT_DASHBOARD_PATH = PACKAGE_PATH / "dashboard.html"
@@ -296,18 +299,20 @@ def ask_question(question: str) -> dict[str, object]:
     }
 
 
-def list_open_questions(limit: int = 50) -> list[dict[str, object]]:
+def list_open_questions(limit: int | None = 50) -> list[dict[str, object]]:
+    query = """
+        SELECT id, question, created_at
+        FROM questions
+        WHERE status = 'open'
+        ORDER BY id DESC
+    """
+    parameters: tuple[object, ...] = ()
+    if limit is not None:
+        query += " LIMIT ?"
+        parameters = (limit,)
+
     with database_session() as connection:
-        rows = connection.execute(
-            """
-            SELECT id, question, created_at
-            FROM questions
-            WHERE status = 'open'
-            ORDER BY id DESC
-            LIMIT ?
-            """,
-            (limit,),
-        ).fetchall()
+        rows = connection.execute(query, parameters).fetchall()
 
     return [
         {"id": row[0], "question": row[1], "created_at": row[2]}
@@ -647,6 +652,33 @@ def project_info() -> dict[str, str]:
     return {
         "project_id": project_id(),
         "name": PROJECT_ROOT.name,
+    }
+
+
+def status_snapshot() -> dict[str, object]:
+    empty = {
+        "schema_version": STATUS_SCHEMA_VERSION,
+        "project": project_info(),
+        "current_task": None,
+        "recent_progress": [],
+        "open_questions": [],
+        "recent_answers": [],
+        "latest_artifact": None,
+        "metrics": [],
+    }
+
+    if not DB_PATH.is_file():
+        return empty
+
+    return {
+        "schema_version": STATUS_SCHEMA_VERSION,
+        "project": project_info(),
+        "current_task": get_current_task(),
+        "recent_progress": list_progress(STATUS_PROGRESS_LIMIT),
+        "open_questions": list_open_questions(None),
+        "recent_answers": list_answered_questions(STATUS_ANSWER_LIMIT),
+        "latest_artifact": get_latest_artifact(),
+        "metrics": list_metrics(),
     }
 
 
@@ -1613,6 +1645,10 @@ def main() -> None:
         args = parse_ask_args(sys.argv[2:])
         question = ask_question(" ".join(args.question))
         print(f"Question #{question['id']}: {question['question']}")
+        return
+
+    if len(sys.argv) > 1 and sys.argv[1] == "status":
+        print(json.dumps(status_snapshot(), ensure_ascii=False, indent=2))
         return
 
     if len(sys.argv) > 1 and sys.argv[1] == "answers":
