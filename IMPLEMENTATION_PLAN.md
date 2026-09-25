@@ -63,7 +63,7 @@ A human can answer a question in the browser. The answer is stored so the agent 
 
 The first implementation does not need to restart the agent automatically.
 
-## Phase 6: Register artifacts ← current
+## Phase 6: Register artifacts ← implementation complete, deployment verification pending
 
 Allow the agent to register a generated file, for example a report, HTML preview, image, or document.
 
