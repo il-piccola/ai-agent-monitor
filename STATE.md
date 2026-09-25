@@ -20,30 +20,53 @@ The app runs on the N100 Windows machine through Tailscale Serve.
 
 Phases 2 through 7 are verified end to end on the N100 and iPhone.
 
-- project-specific metric cards appear on the iPhone and update or disappear when changed through the CLI
+## Phase 8 implementation
 
-## Phase 7 verification
+Phase 8 is implemented in `main` and needs N100 verification.
 
-Phase 7 was verified on the N100 deployment and iPhone:
+Implemented behavior:
 
-- all 29 standard-library tests passed on the N100
-- three metrics were registered and returned by local and Tailscale `/api/metrics`
-- updating `cost.total` to `91.20` without a label or unit preserved `Total cost` and `USD`
-- deleting `tool.error_rate` removed it from the API and iPhone dashboard
-- the iPhone showed `Total cost 91.20 USD` and `Tasks completed 6 / 12`
-- Phase 7 does not calculate LLM cost automatically
+- Python package: `ai_agent_monitor`
+- package metadata and console scripts in `pyproject.toml`
+- installed commands: `monitor` and `ai-agent-monitor`
+- root `monitor.py` remains a compatibility wrapper for existing deployment scripts
+- current working directory becomes the project root
+- each project stores its own `.agent-monitor/monitor.db` and artifact snapshots
+- `monitor init` creates project runtime scaffolding
+- `monitor init --dashboard` creates a project-specific dashboard override
+- `monitor serve --port <port>` serves the current project's dashboard/data
+- bundled dashboard is included as package data
+- tests invoke the package implementation directly
+- a subprocess integration test verifies that two separate working directories keep different metrics and different SQLite databases
+
+The standard-library test suite now contains 34 tests.
 
 ## Next task
 
-Implement Phase 8: package the monitor for use from other projects, preserving project-local data and configuration boundaries. Do not add later-phase metrics or orchestration features.
+On the N100 machine:
+
+1. pull the latest `main`
+2. run `python -m unittest discover -s tests -v`
+3. restart the existing Tailscale deployment and confirm the legacy `monitor.py` wrapper still serves the current monitor
+4. install the tool from the checkout with `uv tool install --force .`
+5. confirm `monitor` is available; if it is not on PATH, use the executable under `uv tool dir --bin`
+6. create two empty test projects outside this repository, for example `phase8-project-a` and `phase8-project-b`
+7. in Project A, run `monitor init` and `monitor metric set project.name A --label Project`
+8. in Project B, run `monitor init` and `monitor metric set project.name B --label Project`
+9. verify `monitor metrics` in A returns A and in B returns B
+10. verify each project has its own `.agent-monitor/monitor.db`
+11. in Project A, run `monitor init --dashboard`, customize a visible heading, then run `monitor serve` on an unused local port and confirm the customized dashboard is served
+12. confirm Project B still uses the bundled dashboard and its own data
+
+Do not begin Phase 9 until these checks succeed.
 
 ## Not implemented yet
 
-- packaging as a reusable CLI
-- use from other projects
+- Phase 8 N100 verification
 - Slack, Discord, or Telegram integration
 - automatic agent resume
 - automatic LLM cost calculation
+- Windows reboot auto-start
 
 ## Handoff instruction
 
@@ -54,4 +77,4 @@ A new assistant or developer should read, in this order:
 3. `ARCHITECTURE.md`
 4. `STATE.md`
 
-Then perform the task under **Next task** without adding features from later phases.
+Then perform the task under **Next task** without adding Phase 9 features.
