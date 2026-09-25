@@ -6,7 +6,7 @@
 - Visibility: public
 - Default branch: `main`
 - Completed phases: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
-- Current phase: 10 verified; Phase 11 not started
+- Current phase: Phase 11 planned and validated; implementation not started
 
 ## Verified deployment
 
@@ -44,7 +44,17 @@ A GitHub Actions workflow runs package installation, `monitor --help`, and the s
 
 ## Next task
 
-Phase 10 is complete. Phase 11 has not been started; wait for its scope to be requested.
+Implement Phase 11 only.
+
+Phase 11 scope:
+
+1. add bounded, read-only, machine-readable `monitor status`
+2. include a schema version, project identity, current task, recent progress, open questions, recent answers, latest artifact, and metrics
+3. include stable IDs and timestamps where the underlying records provide them
+4. add `AGENT_INTEGRATION.md` with agent-neutral rules for when to call each existing monitor command
+5. test empty, partial, and populated state and verify that reading status does not mutate monitor state
+
+Do not begin Phase 12 onboarding, automatic resume, notifications, or automatic telemetry until Phase 11 is verified.
 
 ## Not implemented yet
 
