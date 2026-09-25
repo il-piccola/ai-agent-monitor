@@ -221,3 +221,24 @@ At logon, the PowerShell script first asks `monitor remote status` whether both 
 Removal is conservative: the local startup state must belong to the current project, the stored project ID must match, and the saved launcher path must equal the launcher path derived for the current user and project before deletion is attempted.
 
 This is per-user post-login persistence. It is not a pre-login Windows service and does not require switching to an administrator account.
+
+
+## Agent integration contract
+
+Phase 11 adds a read-only machine interface for CLI-capable agents.
+
+`monitor status` returns schema version 1 with:
+
+- project identity without local filesystem paths
+- the current task
+- the newest 10 progress events
+- all unanswered questions
+- the newest 10 answered questions
+- latest artifact metadata
+- all project metrics
+
+Progress, question, and answer records retain their stable IDs and timestamps. History arrays are newest first.
+
+Status is a snapshot, not an event queue. Reading it does not acknowledge answers, close questions, complete tasks, or otherwise change operational records. If a project has no monitor database, status returns an empty snapshot without creating the database.
+
+`AGENT_INTEGRATION.md` defines when an agent should use task, progress, ask, status, answers, artifact, and metric commands. The contract is agent-neutral; Codex-specific onboarding belongs to Phase 12.
