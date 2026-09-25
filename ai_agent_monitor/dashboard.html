@@ -1,0 +1,627 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Agent Monitor</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body {
+      margin: 0;
+      background: Canvas;
+      color: CanvasText;
+    }
+
+    main {
+      width: min(900px, calc(100% - 32px));
+      margin: 48px auto;
+    }
+
+    header {
+      margin-bottom: 24px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: clamp(1.8rem, 5vw, 2.5rem);
+    }
+
+    .subtitle {
+      margin: 0;
+      color: GrayText;
+    }
+
+    .grid {
+      display: grid;
+      gap: 16px;
+    }
+
+    .card {
+      border: 1px solid color-mix(in srgb, CanvasText 20%, transparent);
+      border-radius: 14px;
+      padding: 20px;
+      background: color-mix(in srgb, Canvas 96%, CanvasText 4%);
+    }
+
+    .card-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .card h2 {
+      margin: 0;
+      font-size: 1rem;
+    }
+
+    .empty,
+    .timestamp,
+    .load-error,
+    .task-started,
+    .answer-status {
+      color: GrayText;
+    }
+
+    .empty,
+    .task-title {
+      margin: 0;
+    }
+
+    .task-title {
+      overflow-wrap: anywhere;
+      font-size: 1.05rem;
+    }
+
+    .task-started {
+      display: block;
+      margin-top: 6px;
+      font-size: 0.82rem;
+    }
+
+    .load-error,
+    .answer-status {
+      margin: 8px 0 0;
+      font-size: 0.9rem;
+    }
+
+    .answer-status.error {
+      color: #c62828;
+    }
+
+    .status {
+      display: inline-block;
+      padding: 4px 9px;
+      border: 1px solid color-mix(in srgb, CanvasText 20%, transparent);
+      border-radius: 999px;
+      font-size: 0.85rem;
+      white-space: nowrap;
+    }
+
+    .progress-list,
+    .question-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .progress-list li,
+    .question-list > li {
+      padding: 12px 0;
+      border-top: 1px solid color-mix(in srgb, CanvasText 12%, transparent);
+    }
+
+    .progress-list li:first-child,
+    .question-list > li:first-child {
+      padding-top: 0;
+      border-top: 0;
+    }
+
+    .message,
+    .question-text {
+      display: block;
+      overflow-wrap: anywhere;
+    }
+
+    .timestamp {
+      display: block;
+      margin-top: 4px;
+      font-size: 0.82rem;
+    }
+
+    .answer-form {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .answer-input {
+      width: 100%;
+      min-height: 72px;
+      box-sizing: border-box;
+      padding: 10px 12px;
+      border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
+      border-radius: 10px;
+      background: Canvas;
+      color: CanvasText;
+      font: inherit;
+      resize: vertical;
+    }
+
+    .answer-button {
+      justify-self: start;
+      padding: 8px 14px;
+      border: 1px solid color-mix(in srgb, CanvasText 25%, transparent);
+      border-radius: 9px;
+      background: ButtonFace;
+      color: ButtonText;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .answer-button:disabled {
+      cursor: wait;
+      opacity: 0.65;
+    }
+
+    .artifact-link {
+      display: inline-block;
+      overflow-wrap: anywhere;
+      font-weight: 600;
+    }
+
+    .artifact-meta {
+      display: block;
+      margin-top: 6px;
+      color: GrayText;
+      font-size: 0.82rem;
+      overflow-wrap: anywhere;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+    }
+
+    .metric {
+      padding: 14px;
+      border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+      border-radius: 11px;
+    }
+
+    .metric-label {
+      display: block;
+      color: GrayText;
+      font-size: 0.85rem;
+      overflow-wrap: anywhere;
+    }
+
+    .metric-value {
+      display: block;
+      margin-top: 6px;
+      font-size: 1.25rem;
+      font-weight: 650;
+      overflow-wrap: anywhere;
+    }
+
+    .metric-updated {
+      display: block;
+      margin-top: 6px;
+      color: GrayText;
+      font-size: 0.75rem;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>AI Agent Monitor</h1>
+      <p class="subtitle">Local view of an AI agent's current work.</p>
+    </header>
+
+    <div class="grid">
+      <section class="card">
+        <h2>Current task</h2>
+        <p id="task-empty" class="empty">No active task.</p>
+        <div id="task-active" hidden>
+          <p id="task-title" class="task-title"></p>
+          <time id="task-started" class="task-started"></time>
+        </div>
+        <p id="task-error" class="load-error" hidden>
+          Current task could not be loaded. The monitor will try again automatically.
+        </p>
+      </section>
+
+      <section class="card">
+        <div class="card-heading">
+          <h2>Metrics</h2>
+          <span id="metric-count" class="status">0 metrics</span>
+        </div>
+        <p id="metrics-empty" class="empty">No metrics have been recorded yet.</p>
+        <div id="metric-grid" class="metric-grid" hidden></div>
+        <p id="metrics-error" class="load-error" hidden>
+          Metrics could not be loaded. The monitor will try again automatically.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>Recent progress</h2>
+        <p id="progress-empty" class="empty">No progress has been recorded yet.</p>
+        <ul id="progress-list" class="progress-list" hidden></ul>
+        <p id="progress-error" class="load-error" hidden>
+          Progress could not be loaded. The monitor will try again automatically.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>Latest artifact</h2>
+        <p id="artifact-empty" class="empty">No artifact has been registered yet.</p>
+        <div id="artifact-active" hidden>
+          <a id="artifact-link" class="artifact-link" target="_blank" rel="noopener"></a>
+          <span id="artifact-meta" class="artifact-meta"></span>
+        </div>
+        <p id="artifact-error" class="load-error" hidden>
+          Latest artifact could not be loaded. The monitor will try again automatically.
+        </p>
+      </section>
+
+      <section class="card">
+        <div class="card-heading">
+          <h2>Questions</h2>
+          <span id="question-count" class="status">0 unanswered</span>
+        </div>
+        <p id="questions-empty" class="empty">No unanswered questions.</p>
+        <ul id="question-list" class="question-list" hidden></ul>
+        <p id="questions-error" class="load-error" hidden>
+          Questions could not be loaded. The monitor will try again automatically.
+        </p>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const taskEmpty = document.querySelector("#task-empty");
+    const taskActive = document.querySelector("#task-active");
+    const taskTitle = document.querySelector("#task-title");
+    const taskStarted = document.querySelector("#task-started");
+    const taskError = document.querySelector("#task-error");
+
+    const metricCount = document.querySelector("#metric-count");
+    const metricsEmpty = document.querySelector("#metrics-empty");
+    const metricGrid = document.querySelector("#metric-grid");
+    const metricsError = document.querySelector("#metrics-error");
+
+    const progressList = document.querySelector("#progress-list");
+    const progressEmpty = document.querySelector("#progress-empty");
+    const progressError = document.querySelector("#progress-error");
+
+    const artifactEmpty = document.querySelector("#artifact-empty");
+    const artifactActive = document.querySelector("#artifact-active");
+    const artifactLink = document.querySelector("#artifact-link");
+    const artifactMeta = document.querySelector("#artifact-meta");
+    const artifactError = document.querySelector("#artifact-error");
+
+    const questionCount = document.querySelector("#question-count");
+    const questionsEmpty = document.querySelector("#questions-empty");
+    const questionList = document.querySelector("#question-list");
+    const questionsError = document.querySelector("#questions-error");
+
+    function formatTimestamp(value) {
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) {
+        return value;
+      }
+      return new Intl.DateTimeFormat(undefined, {
+        dateStyle: "short",
+        timeStyle: "medium",
+      }).format(date);
+    }
+
+    function renderTask(task) {
+      if (!task) {
+        taskActive.hidden = true;
+        taskEmpty.hidden = false;
+        return;
+      }
+
+      taskTitle.textContent = task.title;
+      taskStarted.dateTime = task.started_at;
+      taskStarted.textContent = `Started ${formatTimestamp(task.started_at)}`;
+      taskEmpty.hidden = true;
+      taskActive.hidden = false;
+    }
+
+    function renderMetrics(items) {
+      metricGrid.replaceChildren();
+      metricCount.textContent = `${items.length} ${items.length === 1 ? "metric" : "metrics"}`;
+
+      if (items.length === 0) {
+        metricGrid.hidden = true;
+        metricsEmpty.hidden = false;
+        return;
+      }
+
+      for (const item of items) {
+        const card = document.createElement("div");
+        const label = document.createElement("span");
+        const value = document.createElement("span");
+        const updated = document.createElement("time");
+
+        card.className = "metric";
+
+        label.className = "metric-label";
+        label.textContent = item.label;
+
+        value.className = "metric-value";
+        value.textContent = item.unit ? `${item.value} ${item.unit}` : item.value;
+
+        updated.className = "metric-updated";
+        updated.dateTime = item.updated_at;
+        updated.textContent = formatTimestamp(item.updated_at);
+
+        card.append(label, value, updated);
+        metricGrid.append(card);
+      }
+
+      metricsEmpty.hidden = true;
+      metricGrid.hidden = false;
+    }
+
+    function renderProgress(items) {
+      progressList.replaceChildren();
+
+      if (items.length === 0) {
+        progressList.hidden = true;
+        progressEmpty.hidden = false;
+        return;
+      }
+
+      for (const item of items) {
+        const row = document.createElement("li");
+        const message = document.createElement("span");
+        const timestamp = document.createElement("time");
+
+        message.className = "message";
+        message.textContent = item.message;
+
+        timestamp.className = "timestamp";
+        timestamp.dateTime = item.created_at;
+        timestamp.textContent = formatTimestamp(item.created_at);
+
+        row.append(message, timestamp);
+        progressList.append(row);
+      }
+
+      progressEmpty.hidden = true;
+      progressList.hidden = false;
+    }
+
+    function formatBytes(value) {
+      if (!Number.isFinite(value) || value < 0) {
+        return "";
+      }
+      if (value < 1024) {
+        return `${value} B`;
+      }
+      if (value < 1024 * 1024) {
+        return `${(value / 1024).toFixed(1)} KB`;
+      }
+      return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+    }
+
+    function renderArtifact(artifact) {
+      if (!artifact) {
+        artifactActive.hidden = true;
+        artifactEmpty.hidden = false;
+        return;
+      }
+
+      artifactLink.href = artifact.url;
+      artifactLink.textContent = artifact.display_name;
+
+      const parts = [
+        formatTimestamp(artifact.created_at),
+        formatBytes(artifact.size_bytes),
+        `SHA-256 ${artifact.sha256.slice(0, 12)}…`,
+      ];
+      if (artifact.git_commit) {
+        parts.push(`Git ${artifact.git_commit.slice(0, 12)}`);
+      }
+
+      artifactMeta.textContent = parts.filter(Boolean).join(" · ");
+      artifactEmpty.hidden = true;
+      artifactActive.hidden = false;
+    }
+
+    function buildQuestionRow(item) {
+      const row = document.createElement("li");
+      const question = document.createElement("span");
+      const timestamp = document.createElement("time");
+      const form = document.createElement("form");
+      const input = document.createElement("textarea");
+      const button = document.createElement("button");
+      const status = document.createElement("p");
+
+      question.className = "question-text";
+      question.textContent = item.question;
+
+      timestamp.className = "timestamp";
+      timestamp.dateTime = item.created_at;
+      timestamp.textContent = formatTimestamp(item.created_at);
+
+      form.className = "answer-form";
+      input.className = "answer-input";
+      input.name = "answer";
+      input.rows = 2;
+      input.placeholder = "Write an answer...";
+      input.required = true;
+      input.setAttribute("aria-label", `Answer question ${item.id}`);
+
+      button.className = "answer-button";
+      button.type = "submit";
+      button.textContent = "Answer";
+
+      status.className = "answer-status";
+      status.hidden = true;
+
+      form.append(input, button, status);
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const answer = input.value.trim();
+        if (!answer) {
+          status.textContent = "Answer cannot be empty.";
+          status.classList.add("error");
+          status.hidden = false;
+          return;
+        }
+
+        button.disabled = true;
+        input.disabled = true;
+        status.hidden = true;
+        status.classList.remove("error");
+
+        try {
+          const response = await fetch(`/api/questions/${item.id}/answer`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ answer }),
+          });
+          const payload = await response.json();
+          if (!response.ok) {
+            throw new Error(payload.error || `HTTP ${response.status}`);
+          }
+
+          if (document.activeElement instanceof HTMLElement) {
+            document.activeElement.blur();
+          }
+          await refreshQuestions(true);
+        } catch (error) {
+          input.disabled = false;
+          button.disabled = false;
+          status.textContent = error instanceof Error ? error.message : "Answer failed.";
+          status.classList.add("error");
+          status.hidden = false;
+        }
+      });
+
+      row.append(question, timestamp, form);
+      return row;
+    }
+
+    function renderQuestions(items) {
+      questionList.replaceChildren();
+      questionCount.textContent = `${items.length} unanswered`;
+
+      if (items.length === 0) {
+        questionList.hidden = true;
+        questionsEmpty.hidden = false;
+        return;
+      }
+
+      for (const item of items) {
+        questionList.append(buildQuestionRow(item));
+      }
+
+      questionsEmpty.hidden = true;
+      questionList.hidden = false;
+    }
+
+    async function refreshTask() {
+      try {
+        const response = await fetch("/api/task", { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const payload = await response.json();
+        renderTask(payload.task ?? null);
+        taskError.hidden = true;
+      } catch (error) {
+        taskError.hidden = false;
+      }
+    }
+
+    async function refreshMetrics() {
+      try {
+        const response = await fetch("/api/metrics", { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const payload = await response.json();
+        renderMetrics(Array.isArray(payload.metrics) ? payload.metrics : []);
+        metricsError.hidden = true;
+      } catch (error) {
+        metricsError.hidden = false;
+      }
+    }
+
+    async function refreshProgress() {
+      try {
+        const response = await fetch("/api/progress", { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const payload = await response.json();
+        renderProgress(Array.isArray(payload.progress) ? payload.progress : []);
+        progressError.hidden = true;
+      } catch (error) {
+        progressError.hidden = false;
+      }
+    }
+
+    async function refreshArtifact() {
+      try {
+        const response = await fetch("/api/artifacts/latest", { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const payload = await response.json();
+        renderArtifact(payload.artifact ?? null);
+        artifactError.hidden = true;
+      } catch (error) {
+        artifactError.hidden = false;
+      }
+    }
+
+    async function refreshQuestions(force = false) {
+      if (!force && questionList.contains(document.activeElement)) {
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/questions", { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const payload = await response.json();
+        renderQuestions(Array.isArray(payload.questions) ? payload.questions : []);
+        questionsError.hidden = true;
+      } catch (error) {
+        questionsError.hidden = false;
+      }
+    }
+
+    function refreshDashboard() {
+      refreshTask();
+      refreshMetrics();
+      refreshProgress();
+      refreshArtifact();
+      refreshQuestions();
+    }
+
+    refreshDashboard();
+    setInterval(refreshDashboard, 3000);
+  </script>
+</body>
+</html>
