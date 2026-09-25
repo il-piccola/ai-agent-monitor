@@ -242,3 +242,22 @@ Progress, question, and answer records retain their stable IDs and timestamps. H
 Status is a snapshot, not an event queue. Reading it does not acknowledge answers, close questions, complete tasks, or otherwise change operational records. If a project has no monitor database, status returns an empty snapshot without creating the database.
 
 `AGENT_INTEGRATION.md` defines when an agent should use task, progress, ask, status, answers, artifact, and metric commands. The contract is agent-neutral; Codex-specific onboarding belongs to Phase 12.
+
+
+## Agent onboarding files
+
+Phase 12 keeps the monitor core agent-neutral and installs small adapters into a target project.
+
+`monitor agent install codex` manages:
+
+- a marked block in repository-level `AGENTS.md`
+- `.agents/skills/ai-agent-monitor/SKILL.md`
+- `AI_AGENT_MONITOR.md`
+
+The `AGENTS.md` block is deliberately short. It tells Codex when to use the repository skill and to read monitor state at the beginning of a new or resumed run. The skill points to `AI_AGENT_MONITOR.md` for the actual monitor contract.
+
+The contract is bundled with the Python package and is also usable independently through `monitor agent install generic` or `monitor agent emit generic`.
+
+Install/update is idempotent. Existing `AGENTS.md` content outside the marked monitor block is preserved. Removal verifies generated files before deleting them; modified generated files are left in place rather than being destroyed.
+
+The monitor does not assume that non-Codex agents discover `.agents/skills/`. Their own instruction mechanism can reference the generic contract.
