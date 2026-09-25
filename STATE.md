@@ -43,7 +43,7 @@ Phase 10 has now been revised in `main`:
 - non-Windows platforms reject startup integration explicitly
 - Phase 9 remote lifecycle and the production 8765/9443 service are unchanged
 
-The 53 tests on `main` passed on the N100. Project A's per-user Startup launcher was installed without elevation, and after signing out and back into LETO\ilpic, it automatically started the remote monitor. The endpoint returned HTTP 200. The first run reused backend port 8765 because the old production process ended at sign-out while its existing Serve mapping still pointed to that port, so the production URL temporarily served Project A. Project A was stopped and the original production server was restarted on 8765; production HTTPS 9443 again returned the standard dashboard. Backend selection was fixed to reserve local proxy target ports referenced by Tailscale Serve, with tests covering the collision. The startup CLI success message was also fixed. The revised suite now has 56 passing tests, and CLI 0.10.2 is installed. Project A's Startup launcher remains installed; its remote is currently stopped pending a final isolated-port and iPhone check.
+The 53 tests on `main` passed on the N100. Project A's per-user Startup launcher was installed without elevation, and after signing out and back into LETO\ilpic, it automatically started the remote monitor and returned HTTP 200. The first run reused backend port 8765 because the old production process ended at sign-out while its existing Serve mapping still pointed to that port, so the production URL temporarily served Project A. Project A was stopped and the original production server was restarted on 8765; production HTTPS 9443 again returned the standard dashboard. Backend selection was fixed to reserve local proxy target ports referenced by Tailscale Serve, with tests covering the collision. The startup CLI success message was also fixed. The revised suite now has 56 passing tests, and CLI 0.10.2 is installed. Under 0.10.2, Project A now runs at backend 8766 / HTTPS 9444 while the production dashboard remains at 8765 / HTTPS 9443. The Project A Startup launcher remains installed; final iPhone verification and cleanup are pending.
 
 ## Continuous integration
 
@@ -51,12 +51,10 @@ A GitHub Actions workflow now runs package installation, `monitor --help`, and t
 
 ## Next task
 
-1. With production backend 8765 running and its 9443 Serve mapping intact, start Project A remote using installed CLI 0.10.2.
-2. Verify Project A selects a backend other than 8765, has `backend_alive: true` and `tailscale_active: true`, and the Project A tailnet URL returns HTTP 200.
-3. Verify the Project A dashboard and A metrics on iPhone.
-4. Run `monitor startup remove` in Project A and confirm `startup status` reports not installed.
-5. Run `monitor remote stop` in Project A.
-6. Confirm production backend 8765 and HTTPS 9443 still return the standard dashboard and Serve mappings 443, 8443, and 9443 are unchanged.
+1. Verify Project A at `https://leto.taile04360.ts.net:9444/` on the iPhone.
+2. Run `monitor startup remove` in Project A and confirm `startup status` reports not installed.
+3. Run `monitor remote stop` in Project A.
+4. Confirm production backend 8765 and HTTPS 9443 still return the standard dashboard and Serve mappings 443, 8443, and 9443 are unchanged.
 
 Do not configure automatic startup for the production repository service.
 
