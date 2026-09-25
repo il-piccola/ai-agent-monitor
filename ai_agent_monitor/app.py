@@ -1010,6 +1010,16 @@ def remote_stop() -> dict[str, object]:
     if not isinstance(backend_url, str) or not isinstance(https_port, int):
         raise RuntimeError("Remote state is missing backend or HTTPS port information.")
 
+    pid = state.get("pid")
+    if (
+        isinstance(pid, int)
+        and _process_is_alive(pid)
+        and not _project_server_matches(backend_url, project_id())
+    ):
+        raise RuntimeError(
+            "Saved backend PID is live but cannot be verified as this project; refusing to stop it."
+        )
+
     status = _tailscale_status_json()
     host_name = _tailscale_dns_name()
     proxy = _serve_handler_proxy(status, host_name, https_port)
@@ -1021,7 +1031,6 @@ def remote_stop() -> dict[str, object]:
     if proxy == backend_url:
         _tailscale_command("serve", f"--https={https_port}", "off")
 
-    pid = state.get("pid")
     if isinstance(pid, int) and _process_is_alive(pid):
         _stop_process(pid)
 
