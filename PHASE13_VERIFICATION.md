@@ -190,3 +190,12 @@ avoid copying details from the private test repository into this public repo.
 Scenario A passed and its evidence was reviewed against the Phase 13 pass criteria. Scenario B is next.
 
 Do not add notifications, automatic resume, or automatic telemetry during Phase 13.
+
+
+### N100 Scenario B attempt 1
+
+The first Scenario B task reached a genuine human decision. The human answered `絶対パス` from the monitor dashboard. A later Codex execution read that stored answer and implemented the absolute-path behavior, preserving the validator's existing absolute-path output and adding documentation and regression coverage. Tests covering a temporary file outside the project, relative-path input, and validation failure passed; `npm test` and the repository validation also passed. The task was marked complete and no open question remained.
+
+This attempt does **not** prove the fresh-run continuation requirement. The later Codex execution received context from the original conversation through the task-creation flow, so it had access to both monitor state and prior conversation history. The evidence therefore cannot establish that monitor state alone was sufficient for recovery.
+
+Scenario B remains incomplete. Repeat the continuation test with a Codex chat opened independently from the original conversation. The independent chat must receive only a short continuation request and must not inherit or quote the original transcript.
