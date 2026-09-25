@@ -1120,10 +1120,22 @@ def startup_install() -> dict[str, object]:
     python_path = _powershell_single_quote(str(Path(sys.executable).resolve()))
 
     script = (
-        "$ErrorActionPreference = 'Stop'\n"
+        "$ErrorActionPreference = 'Continue'\n"
         f"Set-Location -LiteralPath '{project_path}'\n"
-        f"& '{python_path}' -m ai_agent_monitor remote start\n"
-        "exit $LASTEXITCODE\n"
+        f"$python = '{python_path}'\n"
+        "$statusJson = & $python -m ai_agent_monitor remote status 2>$null\n"
+        "if ($LASTEXITCODE -eq 0) {\n"
+        "    try {\n"
+        "        $status = $statusJson | ConvertFrom-Json\n"
+        "        if ($status.backend_alive -and $status.tailscale_active) { exit 0 }\n"
+        "    } catch {}\n"
+        "}\n"
+        "for ($attempt = 0; $attempt -lt 12; $attempt++) {\n"
+        "    & $python -m ai_agent_monitor remote start\n"
+        "    if ($LASTEXITCODE -eq 0) { exit 0 }\n"
+        "    Start-Sleep -Seconds 5\n"
+        "}\n"
+        "exit 1\n"
     )
     script_path.write_text(script, encoding="utf-8")
 
