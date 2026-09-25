@@ -24,7 +24,7 @@ DEFAULT_PORT = 8765
 MAX_JSON_BODY = 64 * 1024
 PACKAGE_PATH = Path(__file__).resolve().parent
 PROJECT_ROOT = Path.cwd().resolve()
-DEFAULT_dashboard_path() = PACKAGE_PATH / "dashboard.html"
+DEFAULT_DASHBOARD_PATH = PACKAGE_PATH / "dashboard.html"
 DATA_DIR = PROJECT_ROOT / ".agent-monitor"
 DB_PATH = DATA_DIR / "monitor.db"
 
