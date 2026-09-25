@@ -5,8 +5,8 @@
 - Repository: `il-piccola/ai-agent-monitor`
 - Visibility: public
 - Default branch: `main`
-- Completed phases: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
-- Current phase: 11 implementation complete; verification pending
+- Completed phases: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11
+- Current phase: 11 complete; Phase 12 onboarding is next
 
 ## Verified deployment
 
@@ -44,26 +44,23 @@ Implemented behavior:
 
 The standard-library test suite now contains 61 tests. New tests cover exact empty status shape, partial state, populated state, history bounds, more than 50 open questions, read-only behavior, and pure-JSON CLI output.
 
+## Phase 11 N100 verification
+
+- Updated to `main` commit `4fc0798d42017b55bf388c2ba4e5904f8cd35d99`
+- All 61 tests passed on the N100
+- Reinstalled CLI reports `ai-agent-monitor v0.11.0`
+- Installed `monitor status` returned all eight expected top-level fields
+- Two consecutive status snapshots were identical
+- An empty project returned an empty snapshot and did not create `.agent-monitor/monitor.db`
+
+Phase 11 is verified. Phase 12 has not started.
+
 ## Next task
 
-Verify Phase 11 before beginning Phase 12.
-
-On the N100:
-
-1. pull the latest `main`
-2. run the full test suite and confirm all 61 tests pass
-3. reinstall the CLI with `uv tool install --force .`
-4. confirm package version `0.11.0`
-5. from the ai-agent-monitor repository, run `monitor status` and confirm valid JSON is returned
-6. confirm the JSON contains `schema_version: 1`, project identity, current task, recent progress, open questions, recent answers, latest artifact, and metrics
-7. run `monitor status` twice and confirm the existing dashboard/task/question state is unchanged
-8. from a new empty temporary project directory, run `monitor status` and confirm it returns an empty snapshot without creating `.agent-monitor/monitor.db`
-
-Do not install Codex `AGENTS.md` or repository skills yet. That is Phase 12.
+Begin Phase 12 project onboarding only when requested. Do not start its implementation as part of the Phase 11 verification.
 
 ## Not implemented yet
 
-- Phase 11 N100 installed-CLI verification
 - Phase 12 Codex/agent onboarding
 - real-agent Phase 13 workflow verification
 - Slack, Discord, or Telegram integration

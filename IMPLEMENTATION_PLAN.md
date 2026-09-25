@@ -129,7 +129,7 @@ The earlier Task Scheduler version was rejected after N100 verification returned
 
 Success condition: after installing startup for a test project and signing out/restarting into the same user session, the project's Tailscale endpoint returns without manually running `monitor remote start`, while unrelated Tailscale Serve entries remain unchanged.
 
-## Phase 11: Agent integration contract and machine-readable status ← implementation complete, verification pending
+## Phase 11: Agent integration contract and machine-readable status ← complete; verified on N100
 
 Define the smallest stable interface that a CLI-capable agent needs in order to use the monitor without understanding its implementation.
 
