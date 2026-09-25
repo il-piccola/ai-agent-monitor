@@ -1,5 +1,9 @@
 import hashlib
+import json
+import os
 import sqlite3
+import subprocess
+import sys
 import tempfile
 import unittest
 from contextlib import closing
@@ -326,6 +330,71 @@ class ProjectBoundaryTests(MonitorStorageTestCase):
 
         with patch.object(monitor, "DEFAULT_DASHBOARD_PATH", bundled):
             self.assertEqual(monitor.dashboard_path(), project_dashboard)
+
+
+class InstalledStyleCliIsolationTests(unittest.TestCase):
+    def test_module_cli_keeps_two_projects_separate(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        env = os.environ.copy()
+        existing_pythonpath = env.get("PYTHONPATH")
+        env["PYTHONPATH"] = (
+            str(repo_root)
+            if not existing_pythonpath
+            else os.pathsep.join([str(repo_root), existing_pythonpath])
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            base = Path(temp_dir)
+            project_a = base / "project-a"
+            project_b = base / "project-b"
+            project_a.mkdir()
+            project_b.mkdir()
+
+            subprocess.run(
+                [sys.executable, "-m", "ai_agent_monitor", "metric", "set", "project.name", "A"],
+                cwd=project_a,
+                env=env,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                [sys.executable, "-m", "ai_agent_monitor", "metric", "set", "project.name", "B"],
+                cwd=project_b,
+                env=env,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            output_a = subprocess.run(
+                [sys.executable, "-m", "ai_agent_monitor", "metrics"],
+                cwd=project_a,
+                env=env,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout
+            output_b = subprocess.run(
+                [sys.executable, "-m", "ai_agent_monitor", "metrics"],
+                cwd=project_b,
+                env=env,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout
+
+            metrics_a = json.loads(output_a)["metrics"]
+            metrics_b = json.loads(output_b)["metrics"]
+
+            self.assertEqual(metrics_a[0]["value"], "A")
+            self.assertEqual(metrics_b[0]["value"], "B")
+            self.assertTrue((project_a / ".agent-monitor" / "monitor.db").is_file())
+            self.assertTrue((project_b / ".agent-monitor" / "monitor.db").is_file())
+            self.assertNotEqual(
+                project_a / ".agent-monitor" / "monitor.db",
+                project_b / ".agent-monitor" / "monitor.db",
+            )
 
 
 if __name__ == "__main__":
