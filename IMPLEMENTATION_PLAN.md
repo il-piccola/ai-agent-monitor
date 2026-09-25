@@ -178,13 +178,13 @@ Keep the injected instructions short. They should point the agent to the monitor
 
 Success condition: a fresh project can be prepared for Codex with a small number of commands, Codex receives persistent monitor instructions, and removing the integration does not damage unrelated project instructions.
 
-## Phase 13: Real agent workflow verification and v1.0 gate ← in progress
+## Phase 13: Real agent workflow verification and v1.0 gate ✅
 
 Verify the monitor in a real development project rather than adding more infrastructure.
 
 Run real Codex tasks where the human does not manually issue monitor commands on the agent's behalf.
 
-Use at least two scenarios: one normal task that should complete without a human question, and one task with a genuine decision point that requires a human answer. Scenario A has passed on N100; Scenario B is next. This checks both over-questioning and failure to ask.
+Use at least two scenarios: one normal task that should complete without a human question, and one task with a genuine decision point that requires a human answer. Scenario A and Scenario B passed on N100, including transcript-independent continuation from a dashboard answer. This checks both over-questioning and failure to ask.
 
 Verify this sequence:
 
