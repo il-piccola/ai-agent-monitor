@@ -439,3 +439,20 @@ The startup script first checks whether the project's remote endpoint is already
 The initial Task Scheduler approach was dropped after the N100 verification showed that the normal `LETO\ilpic` session could not register scheduled tasks. The Startup-folder implementation is intentionally per-user and does not require switching to another administrator account.
 
 This runs after the Windows user logs in. It is not a pre-login Windows service.
+
+
+## Agent status snapshot
+
+Phase 11 adds a read-only machine interface for agents:
+
+```bash
+monitor status
+```
+
+The command prints bounded JSON containing the project identity, current task, recent progress, all unanswered questions, recent answers, latest artifact metadata, and project metrics.
+
+The payload includes `schema_version: 1`. Recent progress and answered-question history are limited to the newest 10 records by default; unanswered questions are not hidden by that history limit.
+
+Reading status does not acknowledge answers, close questions, or complete tasks. On a project with no monitor database yet, it returns an empty status snapshot without creating the database.
+
+Agent behavior is defined in `AGENT_INTEGRATION.md`. The contract is intentionally independent of Codex or another specific runner. Phase 12 will add project onboarding for Codex and other agents; Phase 11 does not install agent instructions into other repositories.
