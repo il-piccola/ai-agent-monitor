@@ -34,6 +34,15 @@ STATUS_ANSWER_LIMIT = 10
 PACKAGE_PATH = Path(__file__).resolve().parent
 PROJECT_ROOT = Path.cwd().resolve()
 DEFAULT_DASHBOARD_PATH = PACKAGE_PATH / "dashboard.html"
+AGENT_CONTRACT_PATH = PACKAGE_PATH / "agent_integration.md"
+CODEX_SKILL_PATH = PACKAGE_PATH / "codex_skill.md"
+AGENTS_BLOCK_START = "<!-- ai-agent-monitor:start -->"
+AGENTS_BLOCK_END = "<!-- ai-agent-monitor:end -->"
+AGENTS_BLOCK = """<!-- ai-agent-monitor:start -->
+## AI Agent Monitor
+
+For development work in this repository, use the `ai-agent-monitor` repository skill in `.agents/skills/ai-agent-monitor/SKILL.md`. At the start of a new run or when resuming work, run `monitor status` before reporting new monitor state.
+<!-- ai-agent-monitor:end -->"""
 DATA_DIR = PROJECT_ROOT / ".agent-monitor"
 DB_PATH = DATA_DIR / "monitor.db"
 
@@ -88,6 +97,149 @@ def init_project(copy_dashboard: bool = False) -> dict[str, object]:
         "dashboard": str(project_dashboard) if project_dashboard.exists() else None,
         "dashboard_created": dashboard_created,
     }
+
+
+def agent_contract_target() -> Path:
+    return PROJECT_ROOT / "AI_AGENT_MONITOR.md"
+
+
+def codex_skill_target() -> Path:
+    return PROJECT_ROOT / ".agents" / "skills" / "ai-agent-monitor" / "SKILL.md"
+
+
+def agents_file_path() -> Path:
+    return PROJECT_ROOT / "AGENTS.md"
+
+
+def _replace_managed_agents_block(existing: str) -> str:
+    start_count = existing.count(AGENTS_BLOCK_START)
+    end_count = existing.count(AGENTS_BLOCK_END)
+    if start_count != end_count or start_count > 1:
+        raise RuntimeError(
+            "AGENTS.md contains invalid AI Agent Monitor managed-block markers."
+        )
+
+    if start_count == 0:
+        content = existing
+        if content and not content.endswith("\n"):
+            content += "\n"
+        if content and not content.endswith("\n\n"):
+            content += "\n"
+        return content + AGENTS_BLOCK + "\n"
+
+    start = existing.index(AGENTS_BLOCK_START)
+    end = existing.index(AGENTS_BLOCK_END, start) + len(AGENTS_BLOCK_END)
+    return existing[:start] + AGENTS_BLOCK + existing[end:]
+
+
+def _remove_managed_agents_block(existing: str) -> tuple[str, bool]:
+    start_count = existing.count(AGENTS_BLOCK_START)
+    end_count = existing.count(AGENTS_BLOCK_END)
+    if start_count != end_count or start_count > 1:
+        raise RuntimeError(
+            "AGENTS.md contains invalid AI Agent Monitor managed-block markers."
+        )
+    if start_count == 0:
+        return existing, False
+
+    start = existing.index(AGENTS_BLOCK_START)
+    end = existing.index(AGENTS_BLOCK_END, start) + len(AGENTS_BLOCK_END)
+
+    before = existing[:start].rstrip()
+    after = existing[end:].lstrip()
+    pieces = [piece for piece in (before, after) if piece]
+    if not pieces:
+        return "", True
+    return "\n\n".join(pieces) + "\n", True
+
+
+def install_agent_integration(kind: str) -> dict[str, object]:
+    if kind not in {"codex", "generic"}:
+        raise ValueError("Agent integration kind must be 'codex' or 'generic'.")
+
+    contract_content = AGENT_CONTRACT_PATH.read_text(encoding="utf-8")
+    contract_target = agent_contract_target()
+    contract_target.write_text(contract_content, encoding="utf-8")
+
+    result: dict[str, object] = {
+        "kind": kind,
+        "contract": str(contract_target),
+        "agents_file": None,
+        "skill": None,
+    }
+
+    if kind == "generic":
+        return result
+
+    skill_target = codex_skill_target()
+    skill_target.parent.mkdir(parents=True, exist_ok=True)
+    skill_target.write_text(CODEX_SKILL_PATH.read_text(encoding="utf-8"), encoding="utf-8")
+
+    agents_path = agents_file_path()
+    existing = agents_path.read_text(encoding="utf-8") if agents_path.exists() else ""
+    agents_path.write_text(_replace_managed_agents_block(existing), encoding="utf-8")
+
+    result["agents_file"] = str(agents_path)
+    result["skill"] = str(skill_target)
+    return result
+
+
+def remove_agent_integration(kind: str) -> dict[str, object]:
+    if kind not in {"codex", "generic"}:
+        raise ValueError("Agent integration kind must be 'codex' or 'generic'.")
+
+    removed: list[str] = []
+
+    if kind == "codex":
+        agents_path = agents_file_path()
+        if agents_path.exists():
+            updated, changed = _remove_managed_agents_block(
+                agents_path.read_text(encoding="utf-8")
+            )
+            if changed:
+                if updated:
+                    agents_path.write_text(updated, encoding="utf-8")
+                else:
+                    agents_path.unlink()
+                removed.append(str(agents_path))
+
+        skill_target = codex_skill_target()
+        if skill_target.exists():
+            expected = CODEX_SKILL_PATH.read_text(encoding="utf-8")
+            actual = skill_target.read_text(encoding="utf-8")
+            if actual != expected:
+                raise RuntimeError(
+                    "Codex skill was modified after installation; refusing to delete it."
+                )
+            skill_target.unlink()
+            removed.append(str(skill_target))
+            try:
+                skill_target.parent.rmdir()
+                skill_target.parent.parent.rmdir()
+                skill_target.parent.parent.parent.rmdir()
+            except OSError:
+                pass
+
+    contract_target = agent_contract_target()
+    if contract_target.exists():
+        expected = AGENT_CONTRACT_PATH.read_text(encoding="utf-8")
+        actual = contract_target.read_text(encoding="utf-8")
+        if actual != expected:
+            raise RuntimeError(
+                "AI_AGENT_MONITOR.md was modified after installation; refusing to delete it."
+            )
+        contract_target.unlink()
+        removed.append(str(contract_target))
+
+    return {"kind": kind, "removed": removed}
+
+
+def emit_agent_integration(kind: str) -> str:
+    if kind == "generic":
+        return AGENT_CONTRACT_PATH.read_text(encoding="utf-8")
+    if kind == "codex":
+        return AGENTS_BLOCK + "\n\n" + CODEX_SKILL_PATH.read_text(encoding="utf-8")
+    raise ValueError("Agent integration kind must be 'codex' or 'generic'.")
 
 
 class QuestionNotFoundError(Exception):
@@ -1448,6 +1600,20 @@ class DashboardHandler(BaseHTTPRequestHandler):
         return
 
 
+def parse_agent_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="monitor agent",
+        description="Install, remove, or emit agent integration instructions.",
+    )
+    subparsers = parser.add_subparsers(dest="action", required=True)
+
+    for action in ("install", "remove", "emit"):
+        action_parser = subparsers.add_parser(action)
+        action_parser.add_argument("kind", choices=("codex", "generic"))
+
+    return parser.parse_args(argv)
+
+
 def parse_startup_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="monitor startup",
@@ -1579,6 +1745,25 @@ def serve(port: int) -> None:
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "agent":
+        args = parse_agent_args(sys.argv[2:])
+        if args.action == "install":
+            result = install_agent_integration(args.kind)
+            print(f"Agent integration installed: {result['kind']}")
+            if result["agents_file"]:
+                print(f"AGENTS.md: {result['agents_file']}")
+            if result["skill"]:
+                print(f"Skill: {result['skill']}")
+            print(f"Contract: {result['contract']}")
+            return
+        if args.action == "remove":
+            result = remove_agent_integration(args.kind)
+            print(f"Agent integration removed: {result['kind']}")
+            return
+
+        print(emit_agent_integration(args.kind), end="")
+        return
+
     if len(sys.argv) > 1 and sys.argv[1] == "startup":
         args = parse_startup_args(sys.argv[2:])
         if args.action == "install":
