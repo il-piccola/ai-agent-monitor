@@ -406,5 +406,125 @@ class InstalledStyleCliIsolationTests(unittest.TestCase):
             )
 
 
+class RemoteAccessTests(MonitorStorageTestCase):
+    def test_tailscale_used_ports_reads_tcp_and_web_entries(self) -> None:
+        status = {
+            "TCP": {"443": {}, "8443": {}},
+            "Web": {
+                "host.example.ts.net:9443": {},
+                "host.example.ts.net:10443": {},
+            },
+        }
+
+        self.assertEqual(
+            monitor._tailscale_used_ports(status),
+            {443, 8443, 9443, 10443},
+        )
+
+    def test_serve_handler_proxy_reads_root_proxy(self) -> None:
+        status = {
+            "Web": {
+                "host.example.ts.net:9443": {
+                    "Handlers": {
+                        "/": {"Proxy": "http://127.0.0.1:8765"}
+                    }
+                }
+            }
+        }
+
+        self.assertEqual(
+            monitor._serve_handler_proxy(
+                status,
+                "host.example.ts.net",
+                9443,
+            ),
+            "http://127.0.0.1:8765",
+        )
+
+    def test_remote_state_round_trip_is_project_local(self) -> None:
+        state = {
+            "project_root": str(self.root),
+            "backend_port": 8766,
+            "https_port": 9444,
+            "pid": 1234,
+            "backend_url": "http://127.0.0.1:8766",
+            "tailnet_url": "https://host.example.ts.net:9444/",
+        }
+
+        monitor._write_remote_state(state)
+
+        self.assertEqual(monitor.read_remote_state(), state)
+        self.assertTrue(
+            (self.root / ".agent-monitor" / "runtime" / "remote.json").is_file()
+        )
+
+    def test_remote_status_without_state_is_inactive(self) -> None:
+        self.assertEqual(
+            monitor.remote_status(),
+            {
+                "configured": False,
+                "backend_alive": False,
+                "tailscale_active": False,
+            },
+        )
+
+    def test_remote_stop_refuses_state_from_other_project(self) -> None:
+        monitor._write_remote_state(
+            {
+                "project_root": "C:/different-project",
+                "backend_port": 8766,
+                "https_port": 9444,
+                "pid": 1234,
+                "backend_url": "http://127.0.0.1:8766",
+                "tailnet_url": "https://host.example.ts.net:9444/",
+            }
+        )
+
+        with self.assertRaises(RuntimeError):
+            monitor.remote_stop()
+
+    def test_remote_stop_refuses_reassigned_tailscale_port(self) -> None:
+        monitor._write_remote_state(
+            {
+                "project_root": str(monitor.PROJECT_ROOT),
+                "backend_port": 8766,
+                "https_port": 9444,
+                "pid": 1234,
+                "backend_url": "http://127.0.0.1:8766",
+                "tailnet_url": "https://host.example.ts.net:9444/",
+            }
+        )
+
+        status = {
+            "Web": {
+                "host.example.ts.net:9444": {
+                    "Handlers": {
+                        "/": {"Proxy": "http://127.0.0.1:9999"}
+                    }
+                }
+            }
+        }
+
+        with (
+            patch.object(monitor, "_tailscale_status_json", return_value=status),
+            patch.object(monitor, "_tailscale_dns_name", return_value="host.example.ts.net"),
+        ):
+            with self.assertRaises(RuntimeError):
+                monitor.remote_stop()
+
+    def test_find_free_tailscale_port_skips_existing_and_busy_ports(self) -> None:
+        status = {
+            "Web": {
+                "host.example.ts.net:9443": {}
+            }
+        }
+
+        def fake_port_is_free(host: str, port: int) -> bool:
+            return port != 9444
+
+        with patch.object(monitor, "_port_is_free", side_effect=fake_port_is_free):
+            self.assertEqual(monitor._find_free_tailscale_port(status), 9445)
+
+
 if __name__ == "__main__":
     unittest.main()
