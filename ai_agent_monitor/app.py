@@ -1042,6 +1042,177 @@ def remote_stop() -> dict[str, object]:
     }
 
 
+def startup_state_path() -> Path:
+    return remote_runtime_dir() / "startup.json"
+
+
+def startup_script_path() -> Path:
+    return remote_runtime_dir() / "startup.ps1"
+
+
+def startup_task_name() -> str:
+    return f"AI Agent Monitor {project_id()}"
+
+
+def _powershell_single_quote(value: str) -> str:
+    return value.replace("'", "''")
+
+
+def _require_windows_startup() -> None:
+    if sys.platform != "win32":
+        raise RuntimeError("Startup integration is currently supported only on Windows.")
+
+
+def _schtasks_command(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    _require_windows_startup()
+    try:
+        return subprocess.run(
+            ["schtasks", *args],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=check,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError("Windows Task Scheduler CLI (schtasks) was not found.") from exc
+    except subprocess.CalledProcessError as exc:
+        message = (exc.stderr or exc.stdout or str(exc)).strip()
+        raise RuntimeError(f"Task Scheduler command failed: {message}") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("Task Scheduler command timed out.") from exc
+
+
+def read_startup_state() -> dict[str, object] | None:
+    path = startup_state_path()
+    if not path.is_file():
+        return None
+
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Startup state is invalid: {path}") from exc
+
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"Startup state is invalid: {path}")
+    return payload
+
+
+def _write_startup_state(state: dict[str, object]) -> None:
+    runtime = remote_runtime_dir()
+    runtime.mkdir(parents=True, exist_ok=True)
+    temporary = runtime / "startup.json.tmp"
+    temporary.write_text(
+        json.dumps(state, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    temporary.replace(startup_state_path())
+
+
+def startup_install() -> dict[str, object]:
+    _require_windows_startup()
+    init_project(False)
+
+    runtime = remote_runtime_dir()
+    runtime.mkdir(parents=True, exist_ok=True)
+
+    script_path = startup_script_path()
+    project_path = _powershell_single_quote(str(PROJECT_ROOT))
+    python_path = _powershell_single_quote(str(Path(sys.executable).resolve()))
+
+    script = (
+        "$ErrorActionPreference = 'Stop'\n"
+        f"Set-Location -LiteralPath '{project_path}'\n"
+        f"& '{python_path}' -m ai_agent_monitor remote start\n"
+        "exit $LASTEXITCODE\n"
+    )
+    script_path.write_text(script, encoding="utf-8")
+
+    task_name = startup_task_name()
+    task_command = (
+        'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass '
+        f'-WindowStyle Hidden -File "{script_path}"'
+    )
+
+    _schtasks_command(
+        "/Create",
+        "/SC",
+        "ONLOGON",
+        "/TN",
+        task_name,
+        "/TR",
+        task_command,
+        "/F",
+    )
+
+    state = {
+        "project_root": str(PROJECT_ROOT),
+        "project_id": project_id(),
+        "task_name": task_name,
+        "script_path": str(script_path),
+        "python_executable": str(Path(sys.executable).resolve()),
+        "installed_at": utc_now(),
+    }
+    _write_startup_state(state)
+    return state
+
+
+def startup_status() -> dict[str, object]:
+    _require_windows_startup()
+    state = read_startup_state()
+    task_name = startup_task_name()
+
+    result = _schtasks_command(
+        "/Query",
+        "/TN",
+        task_name,
+        "/FO",
+        "LIST",
+        "/V",
+        check=False,
+    )
+
+    installed = result.returncode == 0
+    return {
+        "installed": installed,
+        "task_name": task_name,
+        "state": state,
+    }
+
+
+def startup_remove() -> dict[str, object]:
+    _require_windows_startup()
+    state = read_startup_state()
+    if state is None:
+        return {"removed": False, "reason": "not installed"}
+
+    if state.get("project_root") != str(PROJECT_ROOT):
+        raise RuntimeError(
+            "Startup state belongs to a different project; refusing to remove it."
+        )
+
+    expected_task = startup_task_name()
+    if state.get("task_name") != expected_task:
+        raise RuntimeError(
+            "Startup task name does not match this project; refusing to remove it."
+        )
+
+    query = _schtasks_command(
+        "/Query",
+        "/TN",
+        expected_task,
+        "/FO",
+        "LIST",
+        "/V",
+        check=False,
+    )
+    if query.returncode == 0:
+        _schtasks_command("/Delete", "/TN", expected_task, "/F")
+
+    startup_state_path().unlink(missing_ok=True)
+    startup_script_path().unlink(missing_ok=True)
+    return {"removed": True, "task_name": expected_task}
+
+
 class DashboardHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         path = self.path.split("?", 1)[0]
@@ -1187,6 +1358,18 @@ class DashboardHandler(BaseHTTPRequestHandler):
         return
 
 
+def parse_startup_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="monitor startup",
+        description="Manage Windows logon startup for this project's remote monitor.",
+    )
+    subparsers = parser.add_subparsers(dest="action", required=True)
+    subparsers.add_parser("install", help="Start this project's remote monitor at Windows logon")
+    subparsers.add_parser("status", help="Show this project's startup task state")
+    subparsers.add_parser("remove", help="Remove this project's startup task")
+    return parser.parse_args(argv)
+
+
 def parse_remote_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="monitor remote",
@@ -1306,6 +1489,20 @@ def serve(port: int) -> None:
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "startup":
+        args = parse_startup_args(sys.argv[2:])
+        if args.action == "install":
+            state = startup_install()
+            print(f"Startup task installed: {state['task_name']}")
+            return
+        if args.action == "status":
+            print(json.dumps(startup_status(), ensure_ascii=False, indent=2))
+            return
+
+        result = startup_remove()
+        print("Startup task removed." if result["removed"] else "Startup task is not installed.")
+        return
+
     if len(sys.argv) > 1 and sys.argv[1] == "remote":
         args = parse_remote_args(sys.argv[2:])
         if args.action == "start":
