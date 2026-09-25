@@ -6,9 +6,9 @@ The goal is to let a human see, at a glance, what an AI agent is doing without r
 
 ## Current status
 
-Phases 1 through 7 are implemented and verified on the N100 and iPhone through Tailscale Serve.
+Phases 1 through 7 are verified on the N100 and iPhone through Tailscale Serve. Phase 8's installed CLI and project isolation are verified on the N100.
 
-The dashboard supports progress updates, a current task, unanswered questions, browser-submitted answers, registered artifact snapshots, and project-specific metrics. The data is stored locally and the dashboard refreshes automatically.
+The dashboard supports progress updates, a current task, unanswered questions, browser-submitted answers, registered artifact snapshots, and project-specific metrics. The installed CLI keeps each project's data and optional dashboard separate. The data is stored locally and the dashboard refreshes automatically.
 
 ## Run the dashboard
 

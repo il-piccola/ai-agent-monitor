@@ -5,8 +5,8 @@
 - Repository: `il-piccola/ai-agent-monitor`
 - Visibility: public
 - Default branch: `main`
-- Completed phases: 1, 2, 3, 4, 5, 6, 7
-- Current phase: 8
+- Completed phases: 1, 2, 3, 4, 5, 6, 7, 8
+- Phase 9 has not started
 
 ## Verified deployment
 
@@ -20,53 +20,35 @@ The app runs on the N100 Windows machine through Tailscale Serve.
 
 Phases 2 through 7 are verified end to end on the N100 and iPhone.
 
-## Phase 8 implementation
+## Phase 8 verification
 
-Phase 8 is implemented in `main` and needs N100 verification.
+Phase 8 was verified on the N100 machine:
 
-Implemented behavior:
-
-- Python package: `ai_agent_monitor`
-- package metadata and console scripts in `pyproject.toml`
-- installed commands: `monitor` and `ai-agent-monitor`
-- root `monitor.py` remains a compatibility wrapper for existing deployment scripts
-- current working directory becomes the project root
-- each project stores its own `.agent-monitor/monitor.db` and artifact snapshots
-- `monitor init` creates project runtime scaffolding
-- `monitor init --dashboard` creates a project-specific dashboard override
-- `monitor serve --port <port>` serves the current project's dashboard/data
-- bundled dashboard is included as package data
-- tests invoke the package implementation directly
-- a subprocess integration test verifies that two separate working directories keep different metrics and different SQLite databases
-
-The standard-library test suite now contains 34 tests.
+- all 34 standard-library tests passed
+- `uv tool install --force .` installed `ai-agent-monitor` 0.8.0 with `monitor` and `ai-agent-monitor` executables
+- the uv tool bin directory is not on PATH; the installed executables worked when invoked by their explicit paths
+- legacy `monitor.py` service continued to return HTTP 200 locally and through Tailscale Serve
+- Project A and Project B were initialized under `C:\Users\ilpic\phase8-test`
+- each project has a separate `.agent-monitor/monitor.db`; `monitor metrics` returned A only in Project A and B only in Project B
+- Project A served its `Project A Monitor` dashboard override on port 8876
+- Project B served the bundled dashboard and only its own data on port 8877
+- both project servers returned HTTP 200, then were stopped after verification
+- the production Tailscale deployment remains on backend port 8765 and HTTPS port 9443
 
 ## Next task
 
-On the N100 machine:
-
-1. pull the latest `main`
-2. run `python -m unittest discover -s tests -v`
-3. restart the existing Tailscale deployment and confirm the legacy `monitor.py` wrapper still serves the current monitor
-4. install the tool from the checkout with `uv tool install --force .`
-5. confirm `monitor` is available; if it is not on PATH, use the executable under `uv tool dir --bin`
-6. create two empty test projects outside this repository, for example `phase8-project-a` and `phase8-project-b`
-7. in Project A, run `monitor init` and `monitor metric set project.name A --label Project`
-8. in Project B, run `monitor init` and `monitor metric set project.name B --label Project`
-9. verify `monitor metrics` in A returns A and in B returns B
-10. verify each project has its own `.agent-monitor/monitor.db`
-11. in Project A, run `monitor init --dashboard`, customize a visible heading, then run `monitor serve` on an unused local port and confirm the customized dashboard is served
-12. confirm Project B still uses the bundled dashboard and its own data
-
-Do not begin Phase 9 until these checks succeed.
+Phase 8 verification is complete. Phase 9 is the next planned phase; wait for a request before implementing it.
 
 ## Not implemented yet
 
-- Phase 8 N100 verification
 - Slack, Discord, or Telegram integration
 - automatic agent resume
 - automatic LLM cost calculation
 - Windows reboot auto-start
+
+## Local workspace note
+
+`uv tool install --force .` generated untracked `build/` and `ai_agent_monitor.egg-info/` directories in the checkout. A cleanup attempt was blocked by the workspace policy; leave these directories intact unless cleanup is authorized through an approved method.
 
 ## Handoff instruction
 
