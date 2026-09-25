@@ -5,8 +5,8 @@
 - Repository: `il-piccola/ai-agent-monitor`
 - Visibility: public
 - Default branch: `main`
-- Completed phases: 1, 2, 3, 4, 5, 6, 7, 8
-- Current phase: 9
+- Completed phases: 1, 2, 3, 4, 5, 6, 7, 8, 9
+- Current phase: 9 verified; Phase 10 not started
 
 ## Verified deployment
 
@@ -21,7 +21,7 @@ The original monitor deployment still runs on the N100 Windows machine through T
 
 ## Phase 9 implementation
 
-Phase 9 is implemented in `main` and needs N100/iPhone verification.
+Phase 9 is implemented in `main` and verified on the N100 and iPhone on 2026-09-25.
 
 Implemented behavior:
 
@@ -45,28 +45,23 @@ Implemented behavior:
 
 The standard-library test suite now contains 45 tests, including remote port parsing, project-local state, old-project ignore migration, project-path privacy, stale-state safety, reassigned Serve-port safety, and PID-reuse protection.
 
+N100 verification results:
+
+- all 45 tests passed and CLI version `0.9.0` was installed
+- Project A used backend `127.0.0.1:8766` and HTTPS `9444`; its dashboard title and metric were A-specific
+- Project B used backend `127.0.0.1:8767` and HTTPS `9445`; its bundled dashboard and metric were B-specific
+- both tailnet URLs returned HTTP 200 and were verified on the iPhone
+- `/api/project` did not expose a Windows full path
+- stopping B left A and production HTTPS `9443` responding; stopping A left production backend `8765` and HTTPS `9443` responding
+- Tailscale Serve mappings for `443` (`127.0.0.1:4174`), `8443` (`127.0.0.1:5173`), and `9443` (`127.0.0.1:8765`) remained unchanged
+- the Phase 9 project remotes are stopped; automatic start after Windows reboot is not configured
+
 ## Next task
 
-On the N100 machine:
-
-1. pull the latest `main`
-2. run `python -m unittest discover -s tests -v` and confirm all 45 tests pass
-3. reinstall the CLI with `uv tool install --force .`
-4. confirm the established production endpoint on backend 8765 / HTTPS 9443 still returns HTTP 200
-5. use the existing Phase 8 Project A directory and run `monitor remote start`
-6. run `monitor remote status` and confirm `configured`, `backend_alive`, and `tailscale_active` are true
-7. verify the printed Project A tailnet URL returns HTTP 200 on the N100 and opens on the iPhone with Project A's custom dashboard and A-only data
-8. while Project A remains remote, use Project B and run `monitor remote start`
-9. verify Project B receives a different backend port and different Tailscale HTTPS port, opens on the iPhone, uses the bundled dashboard, and shows B-only data
-10. run `monitor remote stop` in Project B and verify Project A still works and production HTTPS 9443 still returns HTTP 200
-11. run `monitor remote stop` in Project A and verify its endpoint stops while production HTTPS 9443 still returns HTTP 200
-12. confirm the existing Tailscale services on ports 443 and 8443 were not changed
-
-Do not add Slack/Discord/Telegram integration, automatic agent resume, public Funnel access, or automatic cost calculation during this verification.
+Phase 9 verification is complete. Do not start Phase 10 until its scope is requested and agreed.
 
 ## Not implemented yet
 
-- Phase 9 N100/iPhone verification
 - Slack, Discord, or Telegram integration
 - automatic agent resume
 - automatic LLM cost calculation
