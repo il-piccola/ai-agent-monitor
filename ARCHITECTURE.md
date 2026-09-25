@@ -172,3 +172,14 @@ Each metric has:
 Values are stored as text because the shared monitor does not interpret or calculate project-specific metrics. A project may store `90.71`, `6 / 12`, `98.3`, or another display value according to its own needs.
 
 Updating an existing metric without a new label or unit preserves its existing display metadata. Passing an empty unit explicitly removes the unit. Metric keys are limited to letters, numbers, dots, underscores, and hyphens.
+
+
+## Installed CLI and project boundary
+
+Phase 8 packages the application as the `ai-agent-monitor` Python package and exposes two equivalent console commands: `monitor` and `ai-agent-monitor`.
+
+The current working directory at process start is the project root. Each project stores its own database, artifact snapshots, and optional dashboard override under its own `.agent-monitor/` directory. The installed package contains the default dashboard and executable code; project runtime data is never stored inside the tool installation environment.
+
+The root-level `monitor.py` remains as a compatibility wrapper for the existing N100 deployment scripts.
+
+`monitor init` creates the project-local runtime directory and a nested `.gitignore`. `monitor init --dashboard` additionally copies the bundled default dashboard into the project so that project-specific UI changes can be version-controlled independently of the shared tool.
