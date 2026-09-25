@@ -109,7 +109,7 @@ Success condition: two different monitored projects can be opened from the iPhon
 Separate application-level authentication, public internet hosting, messaging integrations, and automatic agent resume remain outside this phase.
 
 
-## Phase 10: Windows logon startup ← revised implementation complete, N100 verification pending
+## Phase 10: Windows logon startup ✅
 
 Add optional per-user Windows logon startup so a project's tailnet monitor can return without administrator rights.
 
