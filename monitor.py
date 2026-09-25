@@ -8,9 +8,11 @@ import json
 import re
 import sqlite3
 import sys
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import Iterator
 
 HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
@@ -85,6 +87,16 @@ def connect_db() -> sqlite3.Connection:
     return connection
 
 
+@contextmanager
+def database_session() -> Iterator[sqlite3.Connection]:
+    connection = connect_db()
+    try:
+        with connection:
+            yield connection
+    finally:
+        connection.close()
+
+
 def record_progress(message: str) -> dict[str, object]:
     message = message.strip()
     if not message:
@@ -92,7 +104,7 @@ def record_progress(message: str) -> dict[str, object]:
 
     created_at = utc_now()
 
-    with connect_db() as connection:
+    with database_session() as connection:
         cursor = connection.execute(
             "INSERT INTO progress (message, created_at) VALUES (?, ?)",
             (message, created_at),
@@ -107,7 +119,7 @@ def record_progress(message: str) -> dict[str, object]:
 
 
 def list_progress(limit: int = 50) -> list[dict[str, object]]:
-    with connect_db() as connection:
+    with database_session() as connection:
         rows = connection.execute(
             """
             SELECT id, message, created_at
@@ -131,7 +143,7 @@ def start_task(title: str) -> dict[str, str]:
 
     started_at = utc_now()
 
-    with connect_db() as connection:
+    with database_session() as connection:
         connection.execute(
             """
             INSERT INTO current_task (id, title, started_at)
@@ -150,7 +162,7 @@ def start_task(title: str) -> dict[str, str]:
 
 
 def get_current_task() -> dict[str, str] | None:
-    with connect_db() as connection:
+    with database_session() as connection:
         row = connection.execute(
             "SELECT title, started_at FROM current_task WHERE id = 1"
         ).fetchone()
@@ -165,7 +177,7 @@ def get_current_task() -> dict[str, str] | None:
 
 
 def complete_task() -> bool:
-    with connect_db() as connection:
+    with database_session() as connection:
         cursor = connection.execute("DELETE FROM current_task WHERE id = 1")
         return cursor.rowcount > 0
 
@@ -177,7 +189,7 @@ def ask_question(question: str) -> dict[str, object]:
 
     created_at = utc_now()
 
-    with connect_db() as connection:
+    with database_session() as connection:
         cursor = connection.execute(
             """
             INSERT INTO questions (question, status, created_at)
@@ -195,7 +207,7 @@ def ask_question(question: str) -> dict[str, object]:
 
 
 def list_open_questions(limit: int = 50) -> list[dict[str, object]]:
-    with connect_db() as connection:
+    with database_session() as connection:
         rows = connection.execute(
             """
             SELECT id, question, created_at
@@ -220,7 +232,7 @@ def answer_question(question_id: int, answer: str) -> dict[str, object]:
 
     answered_at = utc_now()
 
-    with connect_db() as connection:
+    with database_session() as connection:
         row = connection.execute(
             "SELECT question, status FROM questions WHERE id = ?",
             (question_id,),
@@ -249,7 +261,7 @@ def answer_question(question_id: int, answer: str) -> dict[str, object]:
 
 
 def list_answered_questions(limit: int = 50) -> list[dict[str, object]]:
-    with connect_db() as connection:
+    with database_session() as connection:
         rows = connection.execute(
             """
             SELECT id, question, answer, created_at, answered_at

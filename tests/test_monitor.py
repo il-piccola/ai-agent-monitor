@@ -1,6 +1,7 @@
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 from unittest.mock import patch
 
@@ -128,25 +129,26 @@ class AnswerStorageTests(MonitorStorageTestCase):
 
     def test_phase4_database_is_migrated_for_answers(self) -> None:
         monitor.DATA_DIR.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(monitor.DB_PATH) as connection:
-            connection.execute(
-                """
-                CREATE TABLE questions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    question TEXT NOT NULL,
-                    status TEXT NOT NULL DEFAULT 'open',
-                    created_at TEXT NOT NULL
+        with closing(sqlite3.connect(monitor.DB_PATH)) as connection:
+            with connection:
+                connection.execute(
+                    """
+                    CREATE TABLE questions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        question TEXT NOT NULL,
+                        status TEXT NOT NULL DEFAULT 'open',
+                        created_at TEXT NOT NULL
+                    )
+                    """
                 )
-                """
-            )
-            connection.execute(
-                """
-                INSERT INTO questions (question, status, created_at)
-                VALUES ('Existing question?', 'open', '2026-09-25T00:00:00Z')
-                """
-            )
+                connection.execute(
+                    """
+                    INSERT INTO questions (question, status, created_at)
+                    VALUES ('Existing question?', 'open', '2026-09-25T00:00:00Z')
+                    """
+                )
 
-        with monitor.connect_db() as connection:
+        with monitor.database_session() as connection:
             columns = {
                 row[1]
                 for row in connection.execute("PRAGMA table_info(questions)").fetchall()
