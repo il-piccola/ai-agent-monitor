@@ -567,6 +567,25 @@ class RemoteProjectSecurityTests(MonitorStorageTestCase):
             with self.assertRaises(RuntimeError):
                 monitor.remote_start()
 
+    def test_remote_stop_refuses_unverified_live_pid(self) -> None:
+        monitor._write_remote_state(
+            {
+                "project_root": str(monitor.PROJECT_ROOT),
+                "backend_port": 8766,
+                "https_port": 9444,
+                "pid": 1234,
+                "backend_url": "http://127.0.0.1:8766",
+                "tailnet_url": "https://host.example.ts.net:9444/",
+            }
+        )
+
+        with (
+            patch.object(monitor, "_process_is_alive", return_value=True),
+            patch.object(monitor, "_project_server_matches", return_value=False),
+        ):
+            with self.assertRaises(RuntimeError):
+                monitor.remote_stop()
+
 
 if __name__ == "__main__":
     unittest.main()
