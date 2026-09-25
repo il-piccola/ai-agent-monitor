@@ -20,32 +20,47 @@ The app runs on the N100 Windows machine through Tailscale Serve.
 
 Phases 2 through 6 are verified end to end on the N100 and iPhone.
 
-- progress messages appear on the iPhone
-- current task start/done appears on the iPhone
-- unanswered questions and their count appear on the iPhone
-- browser answers remove questions from the unanswered list and appear in the agent CLI and `/api/answers`
-- registered artifact snapshots appear on the iPhone and remain available after the original file is removed
+## Phase 7 implementation
 
-## Phase 6 verification
+Phase 7 is implemented in `main` and needs N100/iPhone verification.
 
-Phase 6 was verified on the N100 and iPhone:
+Implemented behavior:
 
-- all 22 standard-library tests passed on the N100
-- `phase6-test.html` was registered as `Phase 6 iPhone test`
-- local and Tailscale `/api/artifacts/latest` returned HTTP 200 with its metadata
-- the snapshot URL returned HTTP 200 with the expected HTML and sandbox header
-- the original `phase6-test.html` was deleted; the registered snapshot remained available
-- the iPhone dashboard displayed the artifact and opened its snapshot successfully
+- `python monitor.py metric set <key> <value>` creates or updates a metric
+- optional `--label` and `--unit` control dashboard display
+- omitted label/unit are preserved when an existing metric value is updated
+- an explicitly empty unit clears the stored unit
+- `python monitor.py metric delete <key>` removes a metric
+- `python monitor.py metrics` prints all stored metrics
+- `GET /api/metrics` returns all metrics
+- the dashboard shows responsive project-specific metric cards
+- metric values are stored as text, so projects can choose their own formats
+- metric text is inserted into the dashboard with `textContent`
+- Phase 7 does not calculate LLM cost automatically
+
+The standard-library test suite now contains 29 tests, including metric create/update, metadata preservation, deletion, sorting, default labels, and input validation.
 
 ## Next task
 
 On the N100 machine:
 
-Implement Phase 7: add optional project-specific metrics without changing earlier phase workflows.
+1. pull the latest `main`
+2. run `python -m unittest discover -s tests -v`
+3. restart the existing deployment
+4. register these test metrics:
+   - `cost.total = 90.71`, label `Total cost`, unit `USD`
+   - `tool.error_rate = 1.7`, label `Tool error rate`, unit `%`
+   - `tasks.completed = 6 / 12`, label `Tasks completed`
+5. verify local and Tailscale `/api/metrics` return HTTP 200 and all three values
+6. verify the iPhone dashboard displays all three metric cards
+7. update `cost.total` to `91.20` without repeating its label or unit, and verify the iPhone still shows `Total cost` and `USD`
+8. delete `tool.error_rate` and verify it disappears from the API and iPhone
+
+Do not begin Phase 8 until these checks succeed.
 
 ## Not implemented yet
 
-- project-specific metrics
+- Phase 7 N100/iPhone verification
 - packaging as a reusable CLI
 - use from other projects
 - Slack, Discord, or Telegram integration
@@ -61,4 +76,4 @@ A new assistant or developer should read, in this order:
 3. `ARCHITECTURE.md`
 4. `STATE.md`
 
-Then perform the task under **Next task** without adding features from later phases.
+Then perform the task under **Next task** without adding Phase 8 features.
