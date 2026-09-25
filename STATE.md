@@ -15,7 +15,7 @@ The original monitor deployment still runs on the N100 Windows machine through T
 - production backend: `127.0.0.1:8765`
 - production Tailscale HTTPS port: `9443`
 - production tailnet URL: `https://leto.taile04360.ts.net:9443/`
-- iPhone access: verified through Phase 7
+- iPhone access: verified through Phase 9
 - Phase 8 installed CLI and project isolation: verified on N100
 - automatic start after Windows reboot: not implemented
 
