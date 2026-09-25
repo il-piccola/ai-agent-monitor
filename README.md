@@ -215,3 +215,38 @@ GET /api/answers
 ```
 
 Existing Phase 4 databases are migrated automatically by adding the answer columns when the application first opens the database after updating.
+
+
+## Register a generated artifact
+
+Phase 6 snapshots a generated file into the monitor's local runtime storage.
+
+From the directory that contains the file:
+
+```bash
+python monitor.py artifact ./report.html --name "Benchmark report"
+```
+
+Registration:
+
+- only accepts a regular file inside the current working directory
+- copies the file into `.agent-monitor/artifacts/`
+- computes its SHA-256
+- records its size, MIME type, timestamp, and Git commit when available
+- keeps the registered snapshot unchanged if the original file changes later
+
+The latest registered artifact is available from:
+
+```text
+GET /api/artifacts/latest
+```
+
+and appears in the dashboard as a link.
+
+Artifact files are served through:
+
+```text
+GET /artifacts/<id>
+```
+
+HTML artifacts are served with a browser sandbox so they do not inherit the monitor dashboard's same-origin privileges.
