@@ -739,6 +739,7 @@ class AgentStatusTests(MonitorStorageTestCase):
     def test_empty_status_has_exact_schema_without_creating_database(self) -> None:
         with patch.object(monitor, "PROJECT_ROOT", self.root):
             status = monitor.status_snapshot()
+            expected_project_id = monitor.project_id()
 
         self.assertEqual(
             set(status),
@@ -755,7 +756,7 @@ class AgentStatusTests(MonitorStorageTestCase):
         )
         self.assertEqual(status["schema_version"], 1)
         self.assertEqual(status["project"]["name"], self.root.name)
-        self.assertEqual(status["project"]["project_id"], monitor.project_id())
+        self.assertEqual(status["project"]["project_id"], expected_project_id)
         self.assertIsNone(status["current_task"])
         self.assertEqual(status["recent_progress"], [])
         self.assertEqual(status["open_questions"], [])
