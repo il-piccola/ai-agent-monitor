@@ -6,7 +6,7 @@ The goal is to let a human see, at a glance, what an AI agent is doing without r
 
 ## Current status
 
-Phases 1 through 8 are verified on the N100. Phase 9 adds reusable tailnet-only smartphone access and is awaiting N100/iPhone verification.
+Phases 1 through 9 are verified on the N100, including Phase 9 tailnet-only smartphone access from the iPhone.
 
 The dashboard supports progress updates, a current task, unanswered questions, browser-submitted answers, registered artifact snapshots, and project-specific metrics. The installed CLI keeps each project's data and optional dashboard separate. The data is stored locally and the dashboard refreshes automatically.
 
