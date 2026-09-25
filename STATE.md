@@ -15,7 +15,7 @@ The original monitor deployment runs on the N100 Windows machine through Tailsca
 - production backend: `127.0.0.1:8765`
 - production Tailscale HTTPS port: `9443`
 - production tailnet URL: `https://leto.taile04360.ts.net:9443/`
-- iPhone access: verified through Phase 9
+- iPhone access: verified through Phase 10
 - Phase 8 installed CLI and project isolation: verified on N100
 - Phase 9 project-specific remote access: verified on N100 and iPhone
 - Phase 10 per-user logon startup: verified on N100; the Project A test launcher was removed after verification
