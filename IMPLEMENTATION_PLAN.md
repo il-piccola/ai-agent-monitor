@@ -71,7 +71,7 @@ The dashboard should provide a link to the latest registered artifact.
 
 Artifact records should eventually include enough information to identify the exact reviewed version, such as a hash and, when available, the Git commit.
 
-## Phase 7: Add project-specific metrics ← current
+## Phase 7: Add project-specific metrics ← implementation complete, deployment verification pending
 
 Allow projects to record optional values such as:
 
