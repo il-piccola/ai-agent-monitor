@@ -3,6 +3,8 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+build/
+*.egg-info/
 
 # Local runtime data
 .runtime/
