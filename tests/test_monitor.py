@@ -735,5 +735,131 @@ class WindowsStartupTests(MonitorStorageTestCase):
                 monitor.startup_status()
 
 
+class AgentStatusTests(MonitorStorageTestCase):
+    def test_empty_status_has_exact_schema_without_creating_database(self) -> None:
+        with patch.object(monitor, "PROJECT_ROOT", self.root):
+            status = monitor.status_snapshot()
+
+        self.assertEqual(
+            set(status),
+            {
+                "schema_version",
+                "project",
+                "current_task",
+                "recent_progress",
+                "open_questions",
+                "recent_answers",
+                "latest_artifact",
+                "metrics",
+            },
+        )
+        self.assertEqual(status["schema_version"], 1)
+        self.assertEqual(status["project"]["name"], self.root.name)
+        self.assertEqual(status["project"]["project_id"], monitor.project_id())
+        self.assertIsNone(status["current_task"])
+        self.assertEqual(status["recent_progress"], [])
+        self.assertEqual(status["open_questions"], [])
+        self.assertEqual(status["recent_answers"], [])
+        self.assertIsNone(status["latest_artifact"])
+        self.assertEqual(status["metrics"], [])
+        self.assertFalse(monitor.DB_PATH.exists())
+
+    def test_partial_status_reports_only_existing_state(self) -> None:
+        monitor.set_metric("build.status", "passing", label="Build")
+
+        with patch.object(monitor, "PROJECT_ROOT", self.root):
+            status = monitor.status_snapshot()
+
+        self.assertIsNone(status["current_task"])
+        self.assertEqual(status["recent_progress"], [])
+        self.assertEqual(status["open_questions"], [])
+        self.assertEqual(status["recent_answers"], [])
+        self.assertIsNone(status["latest_artifact"])
+        self.assertEqual(status["metrics"][0]["key"], "build.status")
+
+    def test_populated_status_is_bounded_but_keeps_all_open_questions(self) -> None:
+        monitor.start_task("Phase 11 status test")
+        source = self.root / "result.txt"
+        source.write_text("review me", encoding="utf-8")
+        artifact = monitor.register_artifact(source, allowed_root=self.root)
+        monitor.set_metric("tests", "61", label="Tests")
+
+        with monitor.database_session() as connection:
+            for index in range(12):
+                connection.execute(
+                    "INSERT INTO progress (message, created_at) VALUES (?, ?)",
+                    (f"progress-{index}", f"2026-09-25T00:00:{index:02d}Z"),
+                )
+            for index in range(12):
+                connection.execute(
+                    """
+                    INSERT INTO questions (
+                        question, status, created_at, answer, answered_at
+                    )
+                    VALUES (?, 'answered', ?, ?, ?)
+                    """,
+                    (
+                        f"answered-{index}?",
+                        f"2026-09-25T00:01:{index:02d}Z",
+                        f"answer-{index}",
+                        f"2026-09-25T00:02:{index:02d}Z",
+                    ),
+                )
+            for index in range(55):
+                connection.execute(
+                    """
+                    INSERT INTO questions (question, status, created_at)
+                    VALUES (?, 'open', ?)
+                    """,
+                    (f"open-{index}?", f"2026-09-25T00:03:{index:02d}Z"),
+                )
+
+        with patch.object(monitor, "PROJECT_ROOT", self.root):
+            status = monitor.status_snapshot()
+
+        self.assertEqual(status["current_task"]["title"], "Phase 11 status test")
+        self.assertEqual(len(status["recent_progress"]), monitor.STATUS_PROGRESS_LIMIT)
+        self.assertEqual(status["recent_progress"][0]["message"], "progress-11")
+        self.assertEqual(len(status["recent_answers"]), monitor.STATUS_ANSWER_LIMIT)
+        self.assertEqual(status["recent_answers"][0]["answer"], "answer-11")
+        self.assertEqual(len(status["open_questions"]), 55)
+        self.assertEqual(status["open_questions"][0]["question"], "open-54?")
+        self.assertEqual(status["latest_artifact"]["id"], artifact["id"])
+        self.assertEqual(status["metrics"][0]["key"], "tests")
+
+    def test_status_read_does_not_change_question_or_task_state(self) -> None:
+        task = monitor.start_task("Keep this task")
+        open_question = monitor.ask_question("Still open?")
+        answered_question = monitor.ask_question("Answered?")
+        monitor.answer_question(answered_question["id"], "Yes")
+
+        before_open = monitor.list_open_questions(None)
+        before_answers = monitor.list_answered_questions()
+        before_task = monitor.get_current_task()
+
+        monitor.status_snapshot()
+
+        self.assertEqual(monitor.list_open_questions(None), before_open)
+        self.assertEqual(monitor.list_answered_questions(), before_answers)
+        self.assertEqual(monitor.get_current_task(), before_task)
+        self.assertEqual(before_open[0]["id"], open_question["id"])
+        self.assertEqual(before_task, task)
+
+    def test_status_cli_outputs_json_without_extra_text(self) -> None:
+        monitor.record_progress("CLI status")
+        output = io.StringIO()
+
+        with (
+            patch.object(monitor, "PROJECT_ROOT", self.root),
+            patch.object(sys, "argv", ["monitor", "status"]),
+            redirect_stdout(output),
+        ):
+            monitor.main()
+
+        payload = json.loads(output.getvalue())
+        self.assertEqual(payload["schema_version"], 1)
+        self.assertEqual(payload["recent_progress"][0]["message"], "CLI status")
+
+
 if __name__ == "__main__":
     unittest.main()
