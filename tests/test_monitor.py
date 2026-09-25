@@ -587,5 +587,111 @@ class RemoteProjectSecurityTests(MonitorStorageTestCase):
                 monitor.remote_stop()
 
 
+class WindowsStartupTests(MonitorStorageTestCase):
+    def test_startup_task_name_is_project_specific(self) -> None:
+        with patch.object(monitor, "PROJECT_ROOT", self.root):
+            first = monitor.startup_task_name()
+
+        other = self.root / "other"
+        with patch.object(monitor, "PROJECT_ROOT", other):
+            second = monitor.startup_task_name()
+
+        self.assertNotEqual(first, second)
+        self.assertTrue(first.startswith("AI Agent Monitor "))
+
+    def test_powershell_single_quote_escapes_project_paths(self) -> None:
+        self.assertEqual(
+            monitor._powershell_single_quote("C:/Users/O'Brien/project"),
+            "C:/Users/O''Brien/project",
+        )
+
+    def test_startup_install_creates_onlogon_task_and_state(self) -> None:
+        calls = []
+
+        def fake_schtasks(*args: str, check: bool = True):
+            calls.append((args, check))
+            return subprocess.CompletedProcess(["schtasks"], 0, "", "")
+
+        with (
+            patch.object(monitor.sys, "platform", "win32"),
+            patch.object(monitor, "_schtasks_command", side_effect=fake_schtasks),
+        ):
+            state = monitor.startup_install()
+
+        script_path = monitor.startup_script_path()
+        self.assertTrue(script_path.is_file())
+        script = script_path.read_text(encoding="utf-8")
+        self.assertIn("-m ai_agent_monitor remote start", script)
+        self.assertIn(str(monitor.PROJECT_ROOT), script)
+
+        create_args = calls[0][0]
+        self.assertIn("/Create", create_args)
+        self.assertIn("ONLOGON", create_args)
+        self.assertIn(monitor.startup_task_name(), create_args)
+        self.assertEqual(state["task_name"], monitor.startup_task_name())
+        self.assertEqual(monitor.read_startup_state(), state)
+
+    def test_startup_status_reports_missing_task(self) -> None:
+        result = subprocess.CompletedProcess(["schtasks"], 1, "", "not found")
+
+        with (
+            patch.object(monitor.sys, "platform", "win32"),
+            patch.object(monitor, "_schtasks_command", return_value=result),
+        ):
+            status = monitor.startup_status()
+
+        self.assertFalse(status["installed"])
+        self.assertEqual(status["task_name"], monitor.startup_task_name())
+
+    def test_startup_remove_refuses_state_from_other_project(self) -> None:
+        monitor._write_startup_state(
+            {
+                "project_root": "C:/different-project",
+                "project_id": "different",
+                "task_name": monitor.startup_task_name(),
+            }
+        )
+
+        with patch.object(monitor.sys, "platform", "win32"):
+            with self.assertRaises(RuntimeError):
+                monitor.startup_remove()
+
+    def test_startup_remove_deletes_only_expected_task(self) -> None:
+        task_name = monitor.startup_task_name()
+        monitor.remote_runtime_dir().mkdir(parents=True, exist_ok=True)
+        monitor.startup_script_path().write_text("test", encoding="utf-8")
+        monitor._write_startup_state(
+            {
+                "project_root": str(monitor.PROJECT_ROOT),
+                "project_id": monitor.project_id(),
+                "task_name": task_name,
+            }
+        )
+
+        calls = []
+
+        def fake_schtasks(*args: str, check: bool = True):
+            calls.append((args, check))
+            return subprocess.CompletedProcess(["schtasks"], 0, "", "")
+
+        with (
+            patch.object(monitor.sys, "platform", "win32"),
+            patch.object(monitor, "_schtasks_command", side_effect=fake_schtasks),
+        ):
+            result = monitor.startup_remove()
+
+        self.assertTrue(result["removed"])
+        self.assertEqual(calls[0][0][0], "/Query")
+        self.assertEqual(calls[1][0][0], "/Delete")
+        self.assertIn(task_name, calls[1][0])
+        self.assertFalse(monitor.startup_state_path().exists())
+        self.assertFalse(monitor.startup_script_path().exists())
+
+    def test_startup_is_rejected_outside_windows(self) -> None:
+        with patch.object(monitor.sys, "platform", "linux"):
+            with self.assertRaises(RuntimeError):
+                monitor.startup_status()
+
+
 if __name__ == "__main__":
     unittest.main()
