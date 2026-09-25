@@ -1133,27 +1133,38 @@ def startup_install() -> dict[str, object]:
         f'-WindowStyle Hidden -File "{script_path}"'
     )
 
-    _schtasks_command(
-        "/Create",
-        "/SC",
-        "ONLOGON",
-        "/TN",
-        task_name,
-        "/TR",
-        task_command,
-        "/F",
-    )
+    created = False
+    try:
+        _schtasks_command(
+            "/Create",
+            "/SC",
+            "ONLOGON",
+            "/TN",
+            task_name,
+            "/TR",
+            task_command,
+            "/F",
+        )
+        created = True
 
-    state = {
-        "project_root": str(PROJECT_ROOT),
-        "project_id": project_id(),
-        "task_name": task_name,
-        "script_path": str(script_path),
-        "python_executable": str(Path(sys.executable).resolve()),
-        "installed_at": utc_now(),
-    }
-    _write_startup_state(state)
-    return state
+        state = {
+            "project_root": str(PROJECT_ROOT),
+            "project_id": project_id(),
+            "task_name": task_name,
+            "script_path": str(script_path),
+            "python_executable": str(Path(sys.executable).resolve()),
+            "installed_at": utc_now(),
+        }
+        _write_startup_state(state)
+        return state
+    except Exception:
+        if created:
+            try:
+                _schtasks_command("/Delete", "/TN", task_name, "/F", check=False)
+            except RuntimeError:
+                pass
+        script_path.unlink(missing_ok=True)
+        raise
 
 
 def startup_status() -> dict[str, object]:
