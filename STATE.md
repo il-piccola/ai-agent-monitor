@@ -10,7 +10,7 @@
 
 ## Verified deployment
 
-The app is deployed on the N100 Windows machine through Tailscale Serve.
+The app runs on the N100 Windows machine through Tailscale Serve.
 
 - backend: `127.0.0.1:8765`
 - Tailscale HTTPS port: `9443`
@@ -18,34 +18,47 @@ The app is deployed on the N100 Windows machine through Tailscale Serve.
 - iPhone access: verified
 - automatic start after Windows reboot: not implemented
 
-Phases 2 through 5 were verified end to end on the N100 and iPhone:
+Phases 2 through 5 are verified end to end on the N100 and iPhone.
 
-- progress messages appear on the iPhone
-- current task start/done appears on the iPhone
-- unanswered questions and their count appear on the iPhone
-- browser answers remove questions from the unanswered list
-- submitted answers appear in the agent CLI and `/api/answers`
+## Phase 6 implementation
 
-## Phase 5 verification
+Phase 6 is implemented in `main` and needs N100/iPhone verification.
 
-Phase 5 was verified on the N100 deployment and iPhone:
+Implemented behavior:
 
-- the existing open question `Phase 4 iPhone test?` was reused
-- the Phase 4 database migrated automatically after deployment restart
-- all 17 standard-library tests passed on the N100
-- the iPhone submitted `Phase 5 answer`
-- the question disappeared from `/api/questions`, which returned count 0
-- local and Tailscale `/api/answers` returned the stored answer
-- `python monitor.py answers` returned the same answer
-- automatic agent resumption is not implemented
+- `python monitor.py artifact <path> --name "<label>"` registers a file
+- registration only accepts a regular file inside the current working directory
+- the file is copied to `.agent-monitor/artifacts/`
+- the snapshot gets SHA-256, size, MIME type, timestamp, and Git commit when available
+- SQLite stores artifact metadata
+- `GET /api/artifacts/latest` returns the latest artifact
+- `GET /artifacts/<id>` serves the stored snapshot
+- the dashboard shows the latest artifact name, timestamp, size, short hash, and optional Git commit
+- HTML artifacts use a sandboxed browser context
+- artifact snapshots are ignored by Git
+
+The test suite now includes Phase 6 storage, immutability, newest-artifact, and path-safety tests. The current Chat execution environment cannot resolve GitHub hosts for a clean local checkout, so the test suite must be run on the N100 before end-to-end verification.
 
 ## Next task
 
-Implement Phase 6: register generated artifacts and provide a dashboard link to the latest registered artifact. Preserve the local-first storage model and do not add later-phase metrics or packaging.
+On the N100 machine:
+
+1. pull the latest `main`
+2. run `python -m unittest discover -s tests -v`
+3. restart the existing deployment
+4. create a small `phase6-test.html` inside the repository
+5. register it as `Phase 6 iPhone test`
+6. verify local and Tailscale `/api/artifacts/latest` return HTTP 200 and the registered metadata
+7. verify the artifact URL itself returns HTTP 200
+8. delete or modify the original `phase6-test.html`
+9. verify the registered artifact URL still shows the original snapshot
+10. verify the iPhone dashboard shows `Phase 6 iPhone test` and its link opens the snapshot
+
+Do not begin Phase 7 until these checks succeed.
 
 ## Not implemented yet
 
-- artifact registration
+- Phase 6 N100/iPhone verification
 - project-specific metrics
 - packaging as a reusable CLI
 - use from other projects
@@ -62,4 +75,4 @@ A new assistant or developer should read, in this order:
 3. `ARCHITECTURE.md`
 4. `STATE.md`
 
-Then perform the task under **Next task** without adding features from later phases.
+Then perform the task under **Next task** without adding Phase 7 features.
