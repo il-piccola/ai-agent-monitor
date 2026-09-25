@@ -104,13 +104,11 @@ For the early versions, the intended behavior is:
 
 Automatic resumption requires runner-specific integration and is postponed.
 
-## Local access first
+## Local backend boundary
 
-The first server should bind only for local use.
+The application backend remains bound to `127.0.0.1`. Local browser access therefore works without exposing the Python server directly to the LAN.
 
-A browser on the same computer can view it.
-
-Smartphone or remote access requires additional networking and security decisions and is postponed until the local workflow proves useful.
+Phase 9 adds remote smartphone access through Tailscale Serve while keeping this localhost backend boundary.
 
 ## Security and public repository policy
 
@@ -183,3 +181,25 @@ The current working directory at process start is the project root. Each project
 The root-level `monitor.py` remains as a compatibility wrapper for the existing N100 deployment scripts.
 
 `monitor init` creates the project-local runtime directory and a nested `.gitignore`. `monitor init --dashboard` additionally copies the bundled default dashboard into the project so that project-specific UI changes can be version-controlled independently of the shared tool.
+
+
+## Tailnet-only remote access
+
+Phase 9 adds `monitor remote start|status|stop`.
+
+Each monitored project keeps remote state under its own `.agent-monitor/runtime/` directory. Starting remote access launches that project's monitor backend on a free localhost port, then asks Tailscale Serve for a tailnet-only HTTPS listener on an unused port.
+
+The implementation deliberately does not use Tailscale Funnel. The access boundary is Tailscale tailnet membership; Phase 9 does not add a second application username/password system.
+
+Port selection preserves unrelated services. Existing Tailscale Serve ports are read before choosing a port, and the monitor selects from `9443-9499` or `10443-10499`. The backend range remains `8765-8799`.
+
+Stopping is conservative:
+
+- the remote state must belong to the current project
+- a live saved PID must answer with the current project's hashed project identity before it can be terminated
+- the saved Tailscale HTTPS port is changed only when its current root proxy still matches the saved backend URL
+- if a live PID or Serve mapping cannot be verified, the command refuses the destructive action
+
+The health endpoint exposes only a short project identifier and project directory name, not the full local filesystem path.
+
+The older repository-specific Tailscale deployment scripts remain for backward compatibility with the original N100 deployment.
