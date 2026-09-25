@@ -6,7 +6,7 @@ The goal is to let a human see, at a glance, what an AI agent is doing without r
 
 ## Current status
 
-Phases 1 through 7 are verified on the N100 and iPhone through Tailscale Serve. Phase 8's installed CLI and project isolation are verified on the N100.
+Phases 1 through 8 are verified on the N100. Phase 9 adds reusable tailnet-only smartphone access and is awaiting N100/iPhone verification.
 
 The dashboard supports progress updates, a current task, unanswered questions, browser-submitted answers, registered artifact snapshots, and project-specific metrics. The installed CLI keeps each project's data and optional dashboard separate. The data is stored locally and the dashboard refreshes automatically.
 
@@ -366,3 +366,43 @@ This copies the bundled dashboard to:
 ```
 
 The project-local dashboard takes precedence when that project's server starts. The nested `.agent-monitor/.gitignore` ignores the runtime database and artifact snapshots while allowing the dashboard override to be version-controlled if desired.
+
+
+## Remote smartphone access with Tailscale
+
+Phase 9 adds project-local remote lifecycle commands to the installed CLI.
+
+From a monitored project directory:
+
+```bash
+monitor remote start
+```
+
+The command:
+
+- keeps the Python backend on `127.0.0.1`
+- starts the backend in the background
+- reads the existing Tailscale Serve configuration
+- avoids existing Serve ports, including the established 443, 8443, and 9443 services
+- selects an unused HTTPS port from `9443-9499` or `10443-10499`
+- configures Tailscale Serve, not Funnel
+- prints the tailnet-only HTTPS URL
+- stores runtime state under `.agent-monitor/runtime/`
+
+Check it with:
+
+```bash
+monitor remote status
+```
+
+Stop only the current project's remote endpoint with:
+
+```bash
+monitor remote stop
+```
+
+Before changing a Tailscale Serve entry or terminating a saved PID, the monitor checks that the state still belongs to the current project and that the Serve proxy still points to the expected backend. A reused or unverified live PID is not terminated.
+
+The application itself does not add a separate username/password layer in Phase 9. Access control is provided by membership in the Tailscale tailnet. The command does not enable Tailscale Funnel and therefore does not intentionally publish the dashboard to the public internet.
+
+The existing repository deployment helpers remain available for the original N100 checkout. The `monitor remote ...` commands are intended for installed-CLI use from arbitrary monitored projects.
