@@ -187,6 +187,6 @@ record (ID 1), `open_questions: []`, and artifact ID 1. The final test result
 was 29 schema-negative cases passing. The project identity is omitted here to
 avoid copying details from the private test repository into this public repo.
 
-Scenario A passed. Scenario B has not started.
+Scenario A passed and its evidence was reviewed against the Phase 13 pass criteria. Scenario B is next.
 
 Do not add notifications, automatic resume, or automatic telemetry during Phase 13.
