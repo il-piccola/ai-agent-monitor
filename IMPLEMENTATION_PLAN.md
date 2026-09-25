@@ -184,7 +184,7 @@ Verify the monitor in a real development project rather than adding more infrast
 
 Run real Codex tasks where the human does not manually issue monitor commands on the agent's behalf.
 
-Use at least two scenarios: one normal task that should complete without a human question, and one task with a genuine decision point that requires a human answer. This checks both over-questioning and failure to ask.
+Use at least two scenarios: one normal task that should complete without a human question, and one task with a genuine decision point that requires a human answer. Scenario A has passed on N100; Scenario B is next. This checks both over-questioning and failure to ask.
 
 Verify this sequence:
 
