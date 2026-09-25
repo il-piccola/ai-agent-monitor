@@ -49,12 +49,27 @@ def dashboard_path() -> Path:
     return DEFAULT_DASHBOARD_PATH
 
 
+def _ensure_project_gitignore(ignore_path: Path) -> None:
+    required = [line for line in PROJECT_GITIGNORE.splitlines() if line]
+    existing_text = ignore_path.read_text(encoding="utf-8") if ignore_path.exists() else ""
+    existing_lines = existing_text.splitlines()
+
+    missing = [line for line in required if line not in existing_lines]
+    if not missing:
+        return
+
+    content = existing_text
+    if content and not content.endswith("\n"):
+        content += "\n"
+    content += "\n".join(missing) + "\n"
+    ignore_path.write_text(content, encoding="utf-8")
+
+
 def init_project(copy_dashboard: bool = False) -> dict[str, object]:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     ignore_path = DATA_DIR / ".gitignore"
-    if not ignore_path.exists():
-        ignore_path.write_text(PROJECT_GITIGNORE, encoding="utf-8")
+    _ensure_project_gitignore(ignore_path)
 
     dashboard_created = False
     project_dashboard = DATA_DIR / "dashboard.html"
