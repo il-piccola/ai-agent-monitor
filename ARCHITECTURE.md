@@ -155,3 +155,20 @@ Phase 6 does not expose arbitrary filesystem paths. Registration accepts a regul
 Each artifact record includes the display name, original filename, byte size, SHA-256, MIME type, registration time, and Git commit when it can be detected. The dashboard links to the stored snapshot, not the original source file, so later changes to the source do not change what the human reviewed.
 
 HTML artifacts are served with `Content-Security-Policy: sandbox allow-scripts` and without `allow-same-origin`, preventing a generated HTML artifact from inheriting the monitor application's origin privileges.
+
+
+## Project-specific metrics
+
+Phase 7 uses a generic `metrics` table rather than predefined columns for cost, errors, task counts, or benchmark results.
+
+Each metric has:
+
+- a stable key
+- a human-readable label
+- a display value
+- an optional unit
+- an update timestamp
+
+Values are stored as text because the shared monitor does not interpret or calculate project-specific metrics. A project may store `90.71`, `6 / 12`, `98.3`, or another display value according to its own needs.
+
+Updating an existing metric without a new label or unit preserves its existing display metadata. Passing an empty unit explicitly removes the unit. Metric keys are limited to letters, numbers, dots, underscores, and hyphens.
