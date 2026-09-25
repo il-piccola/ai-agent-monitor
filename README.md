@@ -406,3 +406,34 @@ Before changing a Tailscale Serve entry or terminating a saved PID, the monitor 
 The application itself does not add a separate username/password layer in Phase 9. Access control is provided by membership in the Tailscale tailnet. The command does not enable Tailscale Funnel and therefore does not intentionally publish the dashboard to the public internet.
 
 The existing repository deployment helpers remain available for the original N100 checkout. The `monitor remote ...` commands are intended for installed-CLI use from arbitrary monitored projects.
+
+
+## Windows logon startup
+
+Phase 10 adds optional Windows Task Scheduler integration for project remotes.
+
+From the project directory:
+
+```powershell
+monitor startup install
+```
+
+This creates a project-specific Task Scheduler entry that runs at Windows user logon. The task uses the installed Python environment directly, changes to the project directory, and starts that project's `monitor remote start`.
+
+Check the task:
+
+```powershell
+monitor startup status
+```
+
+Remove it:
+
+```powershell
+monitor startup remove
+```
+
+Each task name includes the project's hashed project ID, so different monitored projects use different Task Scheduler entries.
+
+The startup script first checks whether the project's remote endpoint is already healthy. If not, it retries startup for up to roughly one minute so a slightly delayed Tailscale service does not immediately cause a permanent failure.
+
+This is a Windows **logon** trigger, not a Windows service that starts before user logon. If the N100 boots but no user logs in, this task does not run.
