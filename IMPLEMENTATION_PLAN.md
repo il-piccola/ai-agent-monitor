@@ -83,7 +83,7 @@ Allow projects to record optional values such as:
 
 The shared monitor should not decide which metrics every project must use.
 
-## Phase 8: Use the monitor from other projects ← current
+## Phase 8: Use the monitor from other projects ← implementation complete, deployment verification pending
 
 Package the shared monitor as a CLI tool.
 
