@@ -250,3 +250,49 @@ GET /artifacts/<id>
 ```
 
 HTML artifacts are served with a browser sandbox so they do not inherit the monitor dashboard's same-origin privileges.
+
+
+## Record project-specific metrics
+
+Phase 7 adds arbitrary project metrics without defining a fixed schema for every project.
+
+Set a metric:
+
+```bash
+python monitor.py metric set cost.total 90.71 --label "Total cost" --unit USD
+```
+
+Record a project-specific value:
+
+```bash
+python monitor.py metric set benchmark.score 0.87 --label "Benchmark score"
+python monitor.py metric set tasks.completed "6 / 12" --label "Tasks completed"
+```
+
+Update only the value:
+
+```bash
+python monitor.py metric set cost.total 91.20
+```
+
+The existing label and unit are preserved when they are omitted during an update.
+
+Delete a metric:
+
+```bash
+python monitor.py metric delete benchmark.score
+```
+
+Read the stored metrics:
+
+```bash
+python monitor.py metrics
+```
+
+They are also available from:
+
+```text
+GET /api/metrics
+```
+
+The dashboard refreshes the metric cards every three seconds. Values are stored as display text on purpose, so each project can decide whether a metric represents money, counts, percentages, ratios, benchmark results, or another value. Phase 7 does not calculate LLM costs automatically.
