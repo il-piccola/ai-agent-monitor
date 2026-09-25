@@ -178,7 +178,7 @@ Keep the injected instructions short. They should point the agent to the monitor
 
 Success condition: a fresh project can be prepared for Codex with a small number of commands, Codex receives persistent monitor instructions, and removing the integration does not damage unrelated project instructions.
 
-## Phase 13: Real agent workflow verification and v1.0 gate
+## Phase 13: Real agent workflow verification and v1.0 gate ← in progress
 
 Verify the monitor in a real development project rather than adding more infrastructure.
 
