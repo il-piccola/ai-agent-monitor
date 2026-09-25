@@ -72,7 +72,19 @@ evidence is recorded in `PHASE13_VERIFICATION.md`. Scenario B has not started.
 
 ## Next task
 
-Review the successful Scenario A evidence. Do not begin Scenario B until it has been reviewed.
+Scenario A evidence has been reviewed and accepted. Begin Scenario B in the same real Codex project or another safe real project.
+
+Scenario B requirements:
+
+1. choose a real task with a genuine unresolved human decision
+2. do not mention monitor commands in the task prompt
+3. let Codex record the task, progress, and one clear human question itself
+4. verify the task remains active while the question is unanswered
+5. answer only from the iPhone dashboard; do not paste the answer into the Codex chat
+6. start a fresh Codex run/chat with no previous transcript and ask it only to continue the current task
+7. verify the fresh run reads the stored answer from `monitor status`, does not ask the same question again, finishes validation, and completes the task
+
+Record the evidence in `PHASE13_VERIFICATION.md`.
 
 ## Not implemented yet
 
