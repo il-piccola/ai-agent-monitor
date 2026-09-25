@@ -146,3 +146,12 @@ Phase 5 keeps answers in the existing `questions` table. An answered question st
 Existing Phase 4 databases are migrated in place by adding those two nullable columns if they are missing. The browser writes an answer through a same-origin JSON POST endpoint. Answered questions are removed from the unanswered list, while `/api/answers` and `python monitor.py answers` let an agent read them later.
 
 Phase 5 still does not restart or resume an agent automatically.
+
+
+## Artifact snapshots
+
+Phase 6 does not expose arbitrary filesystem paths. Registration accepts a regular file under the command's current working directory, copies it into `.agent-monitor/artifacts/`, and stores only metadata plus the snapshot storage name in SQLite.
+
+Each artifact record includes the display name, original filename, byte size, SHA-256, MIME type, registration time, and Git commit when it can be detected. The dashboard links to the stored snapshot, not the original source file, so later changes to the source do not change what the human reviewed.
+
+HTML artifacts are served with `Content-Security-Policy: sandbox allow-scripts` and without `allow-same-origin`, preventing a generated HTML artifact from inheriting the monitor application's origin privileges.
