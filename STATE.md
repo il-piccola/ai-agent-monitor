@@ -45,6 +45,10 @@ Phase 10 has now been revised in `main`:
 
 The repository test suite now contains 53 tests. The revised Startup-folder implementation has not yet been executed on the N100 because the user is currently away from the machine.
 
+## Continuous integration
+
+A GitHub Actions workflow now runs package installation, `monitor --help`, and the full standard-library test suite on Windows and Ubuntu with Python 3.10 and 3.12. This supplements N100 verification but does not replace the real Windows logon/iPhone test required to complete Phase 10.
+
 ## Next task
 
 When N100 access is available:
