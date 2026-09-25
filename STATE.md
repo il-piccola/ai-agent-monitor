@@ -5,8 +5,8 @@
 - Repository: `il-piccola/ai-agent-monitor`
 - Visibility: public
 - Default branch: `main`
-- Completed phases: 1, 2, 3, 4, 5
-- Current phase: 6
+- Completed phases: 1, 2, 3, 4, 5, 6
+- Current phase: 7
 
 ## Verified deployment
 
@@ -18,47 +18,33 @@ The app runs on the N100 Windows machine through Tailscale Serve.
 - iPhone access: verified
 - automatic start after Windows reboot: not implemented
 
-Phases 2 through 5 are verified end to end on the N100 and iPhone.
+Phases 2 through 6 are verified end to end on the N100 and iPhone.
 
-## Phase 6 implementation
+- progress messages appear on the iPhone
+- current task start/done appears on the iPhone
+- unanswered questions and their count appear on the iPhone
+- browser answers remove questions from the unanswered list and appear in the agent CLI and `/api/answers`
+- registered artifact snapshots appear on the iPhone and remain available after the original file is removed
 
-Phase 6 is implemented in `main` and needs N100/iPhone verification.
+## Phase 6 verification
 
-Implemented behavior:
+Phase 6 was verified on the N100 and iPhone:
 
-- `python monitor.py artifact <path> --name "<label>"` registers a file
-- registration only accepts a regular file inside the current working directory
-- the file is copied to `.agent-monitor/artifacts/`
-- the snapshot gets SHA-256, size, MIME type, timestamp, and Git commit when available
-- SQLite stores artifact metadata
-- `GET /api/artifacts/latest` returns the latest artifact
-- `GET /artifacts/<id>` serves the stored snapshot
-- the dashboard shows the latest artifact name, timestamp, size, short hash, and optional Git commit
-- HTML artifacts use a sandboxed browser context
-- artifact snapshots are ignored by Git
-
-The test suite now includes Phase 6 storage, immutability, newest-artifact, and path-safety tests. The current Chat execution environment cannot resolve GitHub hosts for a clean local checkout, so the test suite must be run on the N100 before end-to-end verification.
+- all 22 standard-library tests passed on the N100
+- `phase6-test.html` was registered as `Phase 6 iPhone test`
+- local and Tailscale `/api/artifacts/latest` returned HTTP 200 with its metadata
+- the snapshot URL returned HTTP 200 with the expected HTML and sandbox header
+- the original `phase6-test.html` was deleted; the registered snapshot remained available
+- the iPhone dashboard displayed the artifact and opened its snapshot successfully
 
 ## Next task
 
 On the N100 machine:
 
-1. pull the latest `main`
-2. run `python -m unittest discover -s tests -v`
-3. restart the existing deployment
-4. create a small `phase6-test.html` inside the repository
-5. register it as `Phase 6 iPhone test`
-6. verify local and Tailscale `/api/artifacts/latest` return HTTP 200 and the registered metadata
-7. verify the artifact URL itself returns HTTP 200
-8. delete or modify the original `phase6-test.html`
-9. verify the registered artifact URL still shows the original snapshot
-10. verify the iPhone dashboard shows `Phase 6 iPhone test` and its link opens the snapshot
-
-Do not begin Phase 7 until these checks succeed.
+Implement Phase 7: add optional project-specific metrics without changing earlier phase workflows.
 
 ## Not implemented yet
 
-- Phase 6 N100/iPhone verification
 - project-specific metrics
 - packaging as a reusable CLI
 - use from other projects
@@ -75,4 +61,4 @@ A new assistant or developer should read, in this order:
 3. `ARCHITECTURE.md`
 4. `STATE.md`
 
-Then perform the task under **Next task** without adding Phase 7 features.
+Then perform the task under **Next task** without adding features from later phases.

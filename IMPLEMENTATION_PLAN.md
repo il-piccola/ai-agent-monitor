@@ -63,7 +63,7 @@ A human can answer a question in the browser. The answer is stored so the agent 
 
 The first implementation does not need to restart the agent automatically.
 
-## Phase 6: Register artifacts ← implementation complete, deployment verification pending
+## Phase 6: Register artifacts ✅
 
 Allow the agent to register a generated file, for example a report, HTML preview, image, or document.
 
@@ -71,7 +71,7 @@ The dashboard should provide a link to the latest registered artifact.
 
 Artifact records should eventually include enough information to identify the exact reviewed version, such as a hash and, when available, the Git commit.
 
-## Phase 7: Add project-specific metrics
+## Phase 7: Add project-specific metrics ← current
 
 Allow projects to record optional values such as:
 

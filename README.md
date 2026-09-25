@@ -6,9 +6,9 @@ The goal is to let a human see, at a glance, what an AI agent is doing without r
 
 ## Current status
 
-Phases 1 through 5 are implemented and verified on the N100 and iPhone through Tailscale Serve.
+Phases 1 through 6 are implemented and verified on the N100 and iPhone through Tailscale Serve.
 
-The dashboard supports progress updates, a current task, unanswered questions, and browser-submitted answers. The data is stored in local SQLite and the dashboard refreshes automatically.
+The dashboard supports progress updates, a current task, unanswered questions, browser-submitted answers, and links to registered artifact snapshots. The data is stored locally and the dashboard refreshes automatically.
 
 ## Run the dashboard
 
