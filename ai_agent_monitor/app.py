@@ -159,7 +159,6 @@ def install_agent_integration(kind: str) -> dict[str, object]:
 
     contract_content = AGENT_CONTRACT_PATH.read_text(encoding="utf-8")
     contract_target = agent_contract_target()
-    contract_target.write_text(contract_content, encoding="utf-8")
 
     result: dict[str, object] = {
         "kind": kind,
@@ -169,15 +168,20 @@ def install_agent_integration(kind: str) -> dict[str, object]:
     }
 
     if kind == "generic":
+        contract_target.write_text(contract_content, encoding="utf-8")
         return result
-
-    skill_target = codex_skill_target()
-    skill_target.parent.mkdir(parents=True, exist_ok=True)
-    skill_target.write_text(CODEX_SKILL_PATH.read_text(encoding="utf-8"), encoding="utf-8")
 
     agents_path = agents_file_path()
     existing = agents_path.read_text(encoding="utf-8") if agents_path.exists() else ""
-    agents_path.write_text(_replace_managed_agents_block(existing), encoding="utf-8")
+    updated_agents = _replace_managed_agents_block(existing)
+
+    skill_target = codex_skill_target()
+    skill_content = CODEX_SKILL_PATH.read_text(encoding="utf-8")
+
+    contract_target.write_text(contract_content, encoding="utf-8")
+    skill_target.parent.mkdir(parents=True, exist_ok=True)
+    skill_target.write_text(skill_content, encoding="utf-8")
+    agents_path.write_text(updated_agents, encoding="utf-8")
 
     result["agents_file"] = str(agents_path)
     result["skill"] = str(skill_target)
@@ -188,29 +192,43 @@ def remove_agent_integration(kind: str) -> dict[str, object]:
     if kind not in {"codex", "generic"}:
         raise ValueError("Agent integration kind must be 'codex' or 'generic'.")
 
-    removed: list[str] = []
+    contract_target = agent_contract_target()
+    if contract_target.exists():
+        expected_contract = AGENT_CONTRACT_PATH.read_text(encoding="utf-8")
+        if contract_target.read_text(encoding="utf-8") != expected_contract:
+            raise RuntimeError(
+                "AI_AGENT_MONITOR.md was modified after installation; refusing to delete it."
+            )
+
+    agents_path = agents_file_path()
+    updated_agents: str | None = None
+    agents_changed = False
+    skill_target = codex_skill_target()
 
     if kind == "codex":
-        agents_path = agents_file_path()
-        if agents_path.exists():
-            updated, changed = _remove_managed_agents_block(
-                agents_path.read_text(encoding="utf-8")
-            )
-            if changed:
-                if updated:
-                    agents_path.write_text(updated, encoding="utf-8")
-                else:
-                    agents_path.unlink()
-                removed.append(str(agents_path))
-
-        skill_target = codex_skill_target()
         if skill_target.exists():
-            expected = CODEX_SKILL_PATH.read_text(encoding="utf-8")
-            actual = skill_target.read_text(encoding="utf-8")
-            if actual != expected:
+            expected_skill = CODEX_SKILL_PATH.read_text(encoding="utf-8")
+            if skill_target.read_text(encoding="utf-8") != expected_skill:
                 raise RuntimeError(
                     "Codex skill was modified after installation; refusing to delete it."
                 )
+
+        if agents_path.exists():
+            updated_agents, agents_changed = _remove_managed_agents_block(
+                agents_path.read_text(encoding="utf-8")
+            )
+
+    removed: list[str] = []
+
+    if kind == "codex":
+        if agents_changed:
+            if updated_agents:
+                agents_path.write_text(updated_agents, encoding="utf-8")
+            else:
+                agents_path.unlink()
+            removed.append(str(agents_path))
+
+        if skill_target.exists():
             skill_target.unlink()
             removed.append(str(skill_target))
             try:
@@ -220,14 +238,7 @@ def remove_agent_integration(kind: str) -> dict[str, object]:
             except OSError:
                 pass
 
-    contract_target = agent_contract_target()
     if contract_target.exists():
-        expected = AGENT_CONTRACT_PATH.read_text(encoding="utf-8")
-        actual = contract_target.read_text(encoding="utf-8")
-        if actual != expected:
-            raise RuntimeError(
-                "AI_AGENT_MONITOR.md was modified after installation; refusing to delete it."
-            )
         contract_target.unlink()
         removed.append(str(contract_target))
 
