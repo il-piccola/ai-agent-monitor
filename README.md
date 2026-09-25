@@ -59,7 +59,7 @@ That runtime database is ignored by Git.
 
 While the server is running, the dashboard requests `/api/progress` every three seconds and displays the newest recorded messages first.
 
-The final reusable `monitor progress ...` command will be introduced later when the project is packaged as a shared CLI.
+Phase 8 packages the project as a reusable `monitor` CLI. The legacy `python monitor.py ...` entry point remains available for the source checkout.
 
 ## Initial goals
 
@@ -296,3 +296,73 @@ GET /api/metrics
 ```
 
 The dashboard refreshes the metric cards every three seconds. Values are stored as display text on purpose, so each project can decide whether a metric represents money, counts, percentages, ratios, benchmark results, or another value. Phase 7 does not calculate LLM costs automatically.
+
+
+## Install the shared CLI
+
+Phase 8 packages the monitor so it can be installed once on a machine and called from multiple projects.
+
+From this source checkout:
+
+```bash
+uv tool install --force .
+```
+
+Or install directly from GitHub:
+
+```bash
+uv tool install --force git+https://github.com/il-piccola/ai-agent-monitor.git
+```
+
+The package installs both `monitor` and `ai-agent-monitor` commands.
+
+Each command uses the current working directory as the monitored project root. Runtime data therefore stays inside that project's:
+
+```text
+.agent-monitor/
+```
+
+For example:
+
+```bash
+cd project-a
+monitor init
+monitor progress "Project A started"
+monitor metric set build.status passing --label "Build"
+
+cd ../project-b
+monitor init
+monitor progress "Project B started"
+```
+
+Project A and Project B use separate SQLite databases.
+
+Start a dashboard for the current project with:
+
+```bash
+monitor serve --port 8765
+```
+
+The older source-checkout form remains compatible:
+
+```bash
+python monitor.py --port 8765
+```
+
+### Project-specific dashboard
+
+By default, an installed CLI uses its bundled dashboard.
+
+To create an editable dashboard override for only the current project:
+
+```bash
+monitor init --dashboard
+```
+
+This copies the bundled dashboard to:
+
+```text
+.agent-monitor/dashboard.html
+```
+
+The project-local dashboard takes precedence when that project's server starts. The nested `.agent-monitor/.gitignore` ignores the runtime database and artifact snapshots while allowing the dashboard override to be version-controlled if desired.
