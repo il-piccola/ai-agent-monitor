@@ -157,4 +157,36 @@ If a blocking defect is found:
 3. add a regression test
 4. repeat the affected scenario
 
+### N100 Scenario A attempt 1
+
+The normal project task completed and its existing validation passed, but the
+Scenario A monitor criteria did not pass. The fresh Codex shell read the
+onboarding files and attempted `monitor status`; PowerShell reported that
+`monitor` was not recognized. The installed uv tool bin directory was not on
+that shell's `PATH`, and no task or progress records were created. The human's
+post-run status check showed an empty snapshot. No manual task, progress, or
+question commands were issued.
+
+The demonstrated defect was that the onboarding contract assumed the installed
+command was on `PATH`. Version 0.12.1 documents resolving the existing uv tool
+bin path in PowerShell and other platforms. After reinstalling 0.12.1 and
+refreshing the test project's generated onboarding files, Scenario A was
+repeated as attempt 2 below.
+
+### N100 Scenario A attempt 2
+
+After installing version 0.12.1 and refreshing the generated Codex skill and
+contract, a fresh Codex run repeated the same ordinary test task without any
+Monitor commands in the user prompt. Codex read the status snapshot using the
+documented executable-path fallback, started and completed the task, ran the
+validator package tests successfully, recorded one milestone, and registered
+the changed test file as a reviewable artifact. It created no human question.
+
+The human's post-run status check showed `current_task: null`, one progress
+record (ID 1), `open_questions: []`, and artifact ID 1. The final test result
+was 29 schema-negative cases passing. The project identity is omitted here to
+avoid copying details from the private test repository into this public repo.
+
+Scenario A passed. Scenario B has not started.
+
 Do not add notifications, automatic resume, or automatic telemetry during Phase 13.

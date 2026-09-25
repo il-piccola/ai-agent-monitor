@@ -9,6 +9,11 @@ Use this skill for development work in this repository when AI Agent Monitor is 
 
 Read `AI_AGENT_MONITOR.md` for the agent-neutral command contract.
 
+If PowerShell cannot find `monitor`, resolve the existing installed executable
+with `$monitor = Join-Path ((& uv tool dir --bin).Trim()) "monitor.exe"` and
+invoke commands as `& $monitor ...`. Do not skip monitor updates or reinstall
+the package only because its bin directory is missing from `PATH`.
+
 At the start of a new run or when resuming work, run:
 
 ```text

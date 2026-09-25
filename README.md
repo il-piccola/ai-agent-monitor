@@ -8,6 +8,8 @@ The goal is to let a human see, at a glance, what an AI agent is doing without r
 
 Phases 1 through 10 are verified on the N100. This includes Phase 9 tailnet-only smartphone access and Phase 10 per-user Windows logon startup for a test project.
 
+Phases 11 and 12 are also verified on the N100. Phase 13 Scenario A passed after the installed CLI path fallback was added; Scenario B remains to be verified.
+
 The dashboard supports progress updates, a current task, unanswered questions, browser-submitted answers, registered artifact snapshots, and project-specific metrics. The installed CLI keeps each project's data and optional dashboard separate. The data is stored locally and the dashboard refreshes automatically.
 
 ## Run the dashboard
@@ -455,7 +457,7 @@ The payload includes `schema_version: 1`. Recent progress and answered-question 
 
 Reading status does not acknowledge answers, close questions, or complete tasks. On a project with no monitor database yet, it returns an empty status snapshot without creating the database.
 
-Agent behavior is defined in `AGENT_INTEGRATION.md`. The contract is intentionally independent of Codex or another specific runner. Phase 12 will add project onboarding for Codex and other agents; Phase 11 does not install agent instructions into other repositories.
+Agent behavior is defined in `AGENT_INTEGRATION.md`. The contract is intentionally independent of Codex or another specific runner. Phase 12 adds optional project onboarding for Codex and other agents; Phase 11 does not install agent instructions into other repositories.
 
 
 ## Agent onboarding

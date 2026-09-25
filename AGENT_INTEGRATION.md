@@ -6,6 +6,19 @@ The contract is agent-neutral. Codex may consume it first, but the monitor does 
 
 ## Start or resume work
 
+Use the installed `monitor` command for the operations below. If the shell says
+`monitor` is not recognized, locate the existing uv tool executable instead of
+skipping monitor updates or reinstalling the package. In PowerShell on Windows:
+
+```powershell
+$monitor = Join-Path ((& uv tool dir --bin).Trim()) "monitor.exe"
+& $monitor status
+```
+
+Use `& $monitor ...` for the other monitor commands in that PowerShell session.
+On other platforms, resolve the installed `monitor` executable under the bin
+directory reported by `uv tool dir --bin` and invoke it by its full path.
+
 Run:
 
 ```text

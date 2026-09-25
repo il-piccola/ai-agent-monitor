@@ -965,6 +965,16 @@ class AgentOnboardingTests(MonitorStorageTestCase):
         self.assertIn(monitor.AGENTS_BLOCK_START, emitted)
         self.assertIn("name: ai-agent-monitor", emitted)
 
+    def test_codex_skill_documents_windows_cli_path_fallback(self) -> None:
+        skill = monitor.CODEX_SKILL_PATH.read_text(encoding="utf-8")
+        self.assertIn("uv tool dir --bin", skill)
+        self.assertIn("monitor.exe", skill)
+
+    def test_agent_contract_documents_windows_cli_path_fallback(self) -> None:
+        contract = monitor.AGENT_CONTRACT_PATH.read_text(encoding="utf-8")
+        self.assertIn("uv tool dir --bin", contract)
+        self.assertIn("monitor.exe", contract)
+
     def test_bundled_contract_matches_repository_contract(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         self.assertEqual(

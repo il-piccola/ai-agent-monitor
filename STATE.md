@@ -6,7 +6,7 @@
 - Visibility: public
 - Default branch: `main`
 - Completed phases: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12
-- Current phase: 13 real-agent verification in progress
+- Current phase: 13 real-agent verification in progress; Scenario A passed on N100
 
 ## Verified deployment
 
@@ -39,7 +39,7 @@ Implemented behavior:
 - bundled contract content is tested against the repository's canonical `AGENT_INTEGRATION.md`
 - Phase 12 does not add automatic resume or vendor-specific runtime APIs
 
-The standard-library test suite now contains 70 tests.
+The standard-library test suite contained 70 tests at the Phase 12 release.
 
 ## Phase 12 N100 verification
 
@@ -52,7 +52,11 @@ The standard-library test suite now contains 70 tests.
 - Generic install created only `AI_AGENT_MONITOR.md`
 - Generic and Codex emit printed their content without creating project files
 
-Phase 12 is verified. Phase 13 has not started.
+Phase 12 is verified.
+
+## Phase 13 observed onboarding fix
+
+The first N100 Scenario A run could not find `monitor` because the uv tool bin directory was not on the Codex shell's `PATH`. Codex completed the requested test but created no monitor records. Version `0.12.1` adds a documented PowerShell fallback that resolves the existing executable with `uv tool dir --bin`; two regression tests cover the packaged contract and Codex skill text. All 72 standard-library tests pass.
 
 ## Phase 13 verification
 
@@ -63,25 +67,16 @@ Phase 13 does not add monitor features before testing. It uses another real Code
 - Scenario A: a normal task that should finish without asking the human
 - Scenario B: a real decision point, answered from the iPhone, then continued from a fresh Codex run
 
+Scenario A has passed on the N100 after the CLI path fallback was added. Its
+evidence is recorded in `PHASE13_VERIFICATION.md`. Scenario B has not started.
+
 ## Next task
 
-On the N100, choose one existing Codex development project other than `ai-agent-monitor` that is safe to modify and has real work available.
-
-From that project's repository root:
-
-1. confirm the project is in a known Git state
-2. run `monitor agent install codex`
-3. inspect the generated `AGENTS.md` block, `.agents/skills/ai-agent-monitor/SKILL.md`, and `AI_AGENT_MONITOR.md`
-4. run `monitor status`
-5. choose one real, clearly specified task that should not require a human decision
-6. start a fresh Codex run and give only the normal project task, without mentioning monitor commands
-7. after Codex finishes, inspect `monitor status` and compare the behavior with Scenario A in `PHASE13_VERIFICATION.md`
-
-Do not run Scenario B until Scenario A has been reviewed.
+Review the successful Scenario A evidence. Do not begin Scenario B until it has been reviewed.
 
 ## Not implemented yet
 
-- Phase 13 real-agent workflow verification
+- Phase 13 Scenario B and fresh-run continuation verification
 - Slack, Discord, or Telegram integration
 - automatic agent resume
 - automatic LLM cost calculation
