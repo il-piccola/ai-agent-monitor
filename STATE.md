@@ -6,8 +6,9 @@
 - Visibility: public
 - Default branch: `main`
 - Completed phases: 1 through 13
-- Current release: `1.0.0`
+- Package version: `1.0.0`
 - Phase 13 real-agent verification: complete
+- Formal Git tag / GitHub Release: preparation in progress
 
 ## v1.0 verification
 
@@ -56,15 +57,29 @@ The original monitor deployment remains separate from project-specific remotes.
 - production tailnet URL: `https://leto.taile04360.ts.net:9443/`
 - production automatic startup is not configured
 
+## Release preparation
+
+`RELEASE_NOTES_v1.0.0.md` contains the proposed formal release notes.
+
+Before publishing:
+
+1. let CI pass on the final release-preparation commit
+2. create tag `v1.0.0` at that commit
+3. create the GitHub Release using the prepared notes
+4. verify the published tag and release
+
+No functional changes should be added between final CI verification and tagging.
+
 ## Post-v1 roadmap
 
-Optional later phases:
+After the formal v1.0.0 release:
 
-- Phase 14: outbound notifications
-- Phase 15: runner-specific automatic resume
-- Phase 16: reliable automatic telemetry
-
-These are not required for the v1.0 Codex workflow.
+- Phase 14: diagnostics and recovery
+- Phase 15: durable notifications
+- Phase 16: runner lifecycle and automatic resume
+- Phase 17: multi-project registry
+- Phase 18: automatic telemetry
+- Phase 19: second-agent portability verification
 
 ## Handoff instruction
 
