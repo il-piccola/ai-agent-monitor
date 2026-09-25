@@ -168,6 +168,20 @@
       cursor: wait;
       opacity: 0.65;
     }
+
+    .artifact-link {
+      display: inline-block;
+      overflow-wrap: anywhere;
+      font-weight: 600;
+    }
+
+    .artifact-meta {
+      display: block;
+      margin-top: 6px;
+      color: GrayText;
+      font-size: 0.82rem;
+      overflow-wrap: anywhere;
+    }
   </style>
 </head>
 <body>
@@ -200,6 +214,18 @@
       </section>
 
       <section class="card">
+        <h2>Latest artifact</h2>
+        <p id="artifact-empty" class="empty">No artifact has been registered yet.</p>
+        <div id="artifact-active" hidden>
+          <a id="artifact-link" class="artifact-link" target="_blank" rel="noopener"></a>
+          <span id="artifact-meta" class="artifact-meta"></span>
+        </div>
+        <p id="artifact-error" class="load-error" hidden>
+          Latest artifact could not be loaded. The monitor will try again automatically.
+        </p>
+      </section>
+
+      <section class="card">
         <div class="card-heading">
           <h2>Questions</h2>
           <span id="question-count" class="status">0 unanswered</span>
@@ -223,6 +249,12 @@
     const progressList = document.querySelector("#progress-list");
     const progressEmpty = document.querySelector("#progress-empty");
     const progressError = document.querySelector("#progress-error");
+
+    const artifactEmpty = document.querySelector("#artifact-empty");
+    const artifactActive = document.querySelector("#artifact-active");
+    const artifactLink = document.querySelector("#artifact-link");
+    const artifactMeta = document.querySelector("#artifact-meta");
+    const artifactError = document.querySelector("#artifact-error");
 
     const questionCount = document.querySelector("#question-count");
     const questionsEmpty = document.querySelector("#questions-empty");
@@ -281,6 +313,43 @@
 
       progressEmpty.hidden = true;
       progressList.hidden = false;
+    }
+
+    function formatBytes(value) {
+      if (!Number.isFinite(value) || value < 0) {
+        return "";
+      }
+      if (value < 1024) {
+        return `${value} B`;
+      }
+      if (value < 1024 * 1024) {
+        return `${(value / 1024).toFixed(1)} KB`;
+      }
+      return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+    }
+
+    function renderArtifact(artifact) {
+      if (!artifact) {
+        artifactActive.hidden = true;
+        artifactEmpty.hidden = false;
+        return;
+      }
+
+      artifactLink.href = artifact.url;
+      artifactLink.textContent = artifact.display_name;
+
+      const parts = [
+        formatTimestamp(artifact.created_at),
+        formatBytes(artifact.size_bytes),
+        `SHA-256 ${artifact.sha256.slice(0, 12)}…`,
+      ];
+      if (artifact.git_commit) {
+        parts.push(`Git ${artifact.git_commit.slice(0, 12)}`);
+      }
+
+      artifactMeta.textContent = parts.filter(Boolean).join(" · ");
+      artifactEmpty.hidden = true;
+      artifactActive.hidden = false;
     }
 
     function buildQuestionRow(item) {
@@ -407,6 +476,21 @@
       }
     }
 
+    async function refreshArtifact() {
+      try {
+        const response = await fetch("/api/artifacts/latest", { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const payload = await response.json();
+        renderArtifact(payload.artifact ?? null);
+        artifactError.hidden = true;
+      } catch (error) {
+        artifactError.hidden = false;
+      }
+    }
+
     async function refreshQuestions(force = false) {
       if (!force && questionList.contains(document.activeElement)) {
         return;
@@ -429,6 +513,7 @@
     function refreshDashboard() {
       refreshTask();
       refreshProgress();
+      refreshArtifact();
       refreshQuestions();
     }
 
