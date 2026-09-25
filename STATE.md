@@ -6,67 +6,74 @@
 - Visibility: public
 - Default branch: `main`
 - Completed phases: 1, 2, 3, 4, 5, 6, 7, 8, 9
-- Current phase: 9 verified; Phase 10 not started
+- Current phase: 10
 
 ## Verified deployment
 
-The original monitor deployment still runs on the N100 Windows machine through Tailscale Serve.
+The original monitor deployment runs on the N100 Windows machine through Tailscale Serve.
 
 - production backend: `127.0.0.1:8765`
 - production Tailscale HTTPS port: `9443`
 - production tailnet URL: `https://leto.taile04360.ts.net:9443/`
 - iPhone access: verified through Phase 9
 - Phase 8 installed CLI and project isolation: verified on N100
-- automatic start after Windows reboot: not implemented
+- Phase 9 project-specific remote access: verified on N100 and iPhone
+- automatic Windows logon startup: Phase 10 implementation pending N100 verification
 
-## Phase 9 implementation
+## Phase 10 implementation
 
-Phase 9 is implemented in `main` and verified on the N100 and iPhone on 2026-09-25.
+Phase 10 is implemented in `main` and needs N100 verification.
 
 Implemented behavior:
 
-- package version is `0.9.0`
-- `monitor remote start` starts the current project's backend in the background
-- backend remains bound to `127.0.0.1`
-- Tailscale Serve provides HTTPS inside the tailnet
-- Tailscale Funnel is not enabled
-- existing Serve ports are read before choosing a new port
-- backend ports are selected from `8765-8799`
-- HTTPS ports are selected from `9443-9499` or `10443-10499`
-- remote state and logs are stored under the project's `.agent-monitor/runtime/`
-- existing Phase 8 projects automatically gain the `runtime/` ignore rule without losing custom ignore entries
-- `monitor remote status` reports backend and Tailscale Serve state
-- `monitor remote stop` removes only the current project's verified Serve mapping and verified backend process
-- reused or unverified live PIDs are not killed
-- reassigned Tailscale Serve ports are not modified
-- the project health API exposes a hashed project ID and directory name, not the full local path
-- startup cleanup removes a newly-created Serve mapping if a later startup step fails
-- legacy repository deployment scripts remain compatible with the production 8765/9443 service
+- package version is `0.10.0`
+- `monitor startup install` creates a Windows Task Scheduler `ONLOGON` task for the current project
+- task names use the current project's hashed project ID
+- startup files live under the project's ignored `.agent-monitor/runtime/`
+- the launcher uses the Python executable from the installed tool environment, so the CLI bin directory does not need to be on PATH
+- the launcher changes to the saved project directory before starting remote access
+- it checks `remote status` first and exits successfully if the endpoint is already healthy
+- otherwise it retries `remote start` up to 12 times with five-second pauses while Tailscale initializes
+- `monitor startup status` checks whether the expected project-specific task exists
+- `monitor startup remove` removes only the current project's matching task and local startup files
+- startup state from a different project or a mismatched task name is refused
+- installation cleanup removes a newly-created task if local startup-state persistence fails
+- non-Windows platforms reject startup integration explicitly
+- Phase 9 remote lifecycle and the established production 8765/9443 service are unchanged
 
-The standard-library test suite now contains 45 tests, including remote port parsing, project-local state, old-project ignore migration, project-path privacy, stale-state safety, reassigned Serve-port safety, and PID-reuse protection.
-
-N100 verification results:
-
-- all 45 tests passed and CLI version `0.9.0` was installed
-- Project A used backend `127.0.0.1:8766` and HTTPS `9444`; its dashboard title and metric were A-specific
-- Project B used backend `127.0.0.1:8767` and HTTPS `9445`; its bundled dashboard and metric were B-specific
-- both tailnet URLs returned HTTP 200 and were verified on the iPhone
-- `/api/project` did not expose a Windows full path
-- stopping B left A and production HTTPS `9443` responding; stopping A left production backend `8765` and HTTPS `9443` responding
-- Tailscale Serve mappings for `443` (`127.0.0.1:4174`), `8443` (`127.0.0.1:5173`), and `9443` (`127.0.0.1:8765`) remained unchanged
-- the Phase 9 project remotes are stopped; automatic start after Windows reboot is not configured
+The standard-library test suite now contains 52 tests, including Task Scheduler naming, PowerShell path escaping, install/status/remove behavior, project-boundary refusal, non-Windows refusal, and the Tailscale-startup retry script.
 
 ## Next task
 
-Phase 9 verification is complete. Do not start Phase 10 until its scope is requested and agreed.
+On the N100 machine:
+
+1. pull the latest `main`
+2. run `python -m unittest discover -s tests -v` and confirm all 52 tests pass
+3. reinstall the CLI with `uv tool install --force .`
+4. confirm the installed package reports version `0.10.0`
+5. use the Phase 8 Project A test directory and ensure its Phase 9 remote is currently stopped
+6. run `monitor startup install` from Project A
+7. run `monitor startup status` and verify the expected project-specific task is installed
+8. inspect Task Scheduler or `schtasks /Query` and confirm the task trigger is user logon and the task command points to Project A's runtime PowerShell script
+9. sign out and back in, or reboot and log in to the same Windows user
+10. without manually running `monitor remote start`, verify Project A's `monitor remote status` reports `backend_alive: true` and `tailscale_active: true`
+11. verify the Project A tailnet URL returns HTTP 200 from the N100 and iPhone
+12. verify production HTTPS 9443 and existing Serve mappings on 443 and 8443 remain unchanged
+13. run `monitor startup remove` from Project A
+14. verify the scheduled task is gone
+15. run `monitor remote stop` in Project A so the temporary Phase 10 endpoint is also stopped
+16. confirm production backend 8765 and HTTPS 9443 still return HTTP 200
+
+Do not configure startup for the production repository service during this first Phase 10 verification. Use only the disposable Project A test project.
 
 ## Not implemented yet
 
+- Phase 10 N100 logon/reboot verification
 - Slack, Discord, or Telegram integration
 - automatic agent resume
 - automatic LLM cost calculation
-- Windows reboot auto-start
 - separate application-level authentication beyond Tailscale tailnet membership
+- pre-login Windows service startup
 
 ## Local workspace note
 
