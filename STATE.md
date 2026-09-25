@@ -6,7 +6,7 @@
 - Visibility: public
 - Default branch: `main`
 - Completed phases: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11
-- Current phase: 11 complete; Phase 12 onboarding is next
+- Current phase: 12 implementation complete; verification pending
 
 ## Verified deployment
 
@@ -16,53 +16,56 @@ The original monitor deployment runs on the N100 Windows machine through Tailsca
 - production Tailscale HTTPS port: `9443`
 - production tailnet URL: `https://leto.taile04360.ts.net:9443/`
 - iPhone access: verified through Phase 10
-- Phase 8 installed CLI and project isolation: verified on N100
-- Phase 9 project-specific remote access: verified on N100 and iPhone
-- Phase 10 per-user logon startup: verified on N100
+- Phase 11 machine-readable status: verified on N100
 - production automatic startup remains unconfigured
 
-## Phase 11 implementation
+## Phase 12 implementation
 
-Package version `0.11.0` implements the agent-neutral integration contract.
+Package version `0.12.0` implements project onboarding for Codex and other CLI-capable agents.
 
 Implemented behavior:
 
-- `monitor status` prints JSON only
-- status schema version is `1`
-- project identity includes the hashed project ID and project directory name, not a local filesystem path
-- current task is included
-- recent progress is limited to the newest 10 records
-- all unanswered questions are included
-- recent answers are limited to the newest 10 records
-- latest artifact metadata is included
-- all project metrics are included
-- progress, question, and answer records retain IDs and timestamps
-- status does not acknowledge answers, close questions, or complete tasks
-- an uninitialized project returns an empty snapshot without creating `.agent-monitor/monitor.db`
-- `AGENT_INTEGRATION.md` defines when agents should use the existing monitor commands
-- the contract is independent of Codex; Codex onboarding remains Phase 12
+- `monitor agent install codex` installs the Codex adapter
+- repository-level `AGENTS.md` receives one marked AI Agent Monitor block
+- existing `AGENTS.md` content outside that block is preserved
+- `.agents/skills/ai-agent-monitor/SKILL.md` contains the Codex repository skill
+- `AI_AGENT_MONITOR.md` contains the agent-neutral contract
+- re-running Codex install updates monitor-owned content without duplicating the managed block
+- malformed managed-block markers are refused before monitor-owned files are written
+- `monitor agent remove codex` removes the managed block and unchanged generated files
+- modified generated skill or contract files are not silently deleted
+- `monitor agent install generic` installs only the agent-neutral contract
+- `monitor agent emit generic|codex` prints integration text without changing the project
+- bundled contract content is tested against the repository's canonical `AGENT_INTEGRATION.md`
+- Phase 12 does not add automatic resume or vendor-specific runtime APIs
 
-The standard-library test suite now contains 61 tests. New tests cover exact empty status shape, partial state, populated state, history bounds, more than 50 open questions, read-only behavior, and pure-JSON CLI output.
-
-## Phase 11 N100 verification
-
-- Updated to `main` commit `4fc0798d42017b55bf388c2ba4e5904f8cd35d99`
-- All 61 tests passed on the N100
-- Reinstalled CLI reports `ai-agent-monitor v0.11.0`
-- Installed `monitor status` returned all eight expected top-level fields
-- Two consecutive status snapshots were identical
-- An empty project returned an empty snapshot and did not create `.agent-monitor/monitor.db`
-
-Phase 11 is verified. Phase 12 has not started.
+The standard-library test suite now contains 70 tests.
 
 ## Next task
 
-Begin Phase 12 project onboarding only when requested. Do not start its implementation as part of the Phase 11 verification.
+Verify Phase 12 before beginning Phase 13.
+
+On the N100:
+
+1. pull the latest `main`
+2. run the full test suite and confirm all 70 tests pass
+3. reinstall the CLI with `uv tool install --force .`
+4. confirm package version `0.12.0`
+5. create a disposable Git project with an existing `AGENTS.md` containing unrelated instructions
+6. run `monitor agent install codex`
+7. confirm the original `AGENTS.md` text remains and exactly one monitor managed block exists
+8. confirm `.agents/skills/ai-agent-monitor/SKILL.md` and `AI_AGENT_MONITOR.md` exist
+9. run `monitor agent install codex` again and confirm no duplicate managed block appears
+10. run `monitor agent remove codex` and confirm the unrelated `AGENTS.md` text remains while monitor-owned files are removed
+11. run `monitor agent install generic` in a second disposable project and confirm only `AI_AGENT_MONITOR.md` is installed
+12. run `monitor agent emit generic` and confirm it prints the contract without creating project files
+
+Do not begin a real Codex autonomous workflow yet. That is Phase 13.
 
 ## Not implemented yet
 
-- Phase 12 Codex/agent onboarding
-- real-agent Phase 13 workflow verification
+- Phase 12 N100 installed-CLI verification
+- Phase 13 real-agent workflow verification
 - Slack, Discord, or Telegram integration
 - automatic agent resume
 - automatic LLM cost calculation
