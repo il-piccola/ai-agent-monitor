@@ -622,10 +622,14 @@ def delete_metric(key: str) -> bool:
         return cursor.rowcount > 0
 
 
+def project_id() -> str:
+    return hashlib.sha256(str(PROJECT_ROOT).encode("utf-8")).hexdigest()[:16]
+
+
 def project_info() -> dict[str, str]:
     return {
-        "project_root": str(PROJECT_ROOT),
-        "data_dir": str(DATA_DIR),
+        "project_id": project_id(),
+        "name": PROJECT_ROOT.name,
     }
 
 
@@ -714,28 +718,32 @@ def _find_free_tailscale_port(status: dict[str, object]) -> int:
     raise RuntimeError("No free Tailscale HTTPS port found in the configured ranges.")
 
 
-def _wait_for_project_server(url: str, expected_project_root: str) -> None:
+def _project_server_matches(url: str, expected_project_id: str) -> bool:
     endpoint = f"{url}/api/project"
-    last_error: Exception | None = None
+    try:
+        with urllib.request.urlopen(endpoint, timeout=1) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (
+        OSError,
+        urllib.error.URLError,
+        json.JSONDecodeError,
+    ):
+        return False
+
+    return (
+        response.status == 200
+        and isinstance(payload, dict)
+        and payload.get("project_id") == expected_project_id
+    )
+
+
+def _wait_for_project_server(url: str, expected_project_id: str) -> None:
     for _ in range(30):
-        try:
-            with urllib.request.urlopen(endpoint, timeout=1) as response:
-                payload = json.loads(response.read().decode("utf-8"))
-                if (
-                    response.status == 200
-                    and isinstance(payload, dict)
-                    and payload.get("project_root") == expected_project_root
-                ):
-                    return
-        except (
-            OSError,
-            urllib.error.URLError,
-            json.JSONDecodeError,
-        ) as exc:
-            last_error = exc
+        if _project_server_matches(url, expected_project_id):
+            return
         time.sleep(0.2)
 
-    raise RuntimeError(f"Monitor backend did not become ready: {last_error}")
+    raise RuntimeError("Monitor backend did not become ready.")
 
 
 def _tailscale_dns_name() -> str:
@@ -840,19 +848,24 @@ def _write_remote_state(state: dict[str, object]) -> None:
 
 
 def remote_start() -> dict[str, object]:
+    init_project(False)
+
     existing = read_remote_state()
     if existing is not None:
         pid = existing.get("pid")
         backend_url = existing.get("backend_url")
-        if isinstance(pid, int) and _process_is_alive(pid) and isinstance(backend_url, str):
-            try:
-                _wait_for_project_server(backend_url, str(PROJECT_ROOT))
-            except RuntimeError:
-                pass
-            else:
+        if isinstance(pid, int) and _process_is_alive(pid):
+            if isinstance(backend_url, str) and _project_server_matches(
+                backend_url,
+                project_id(),
+            ):
                 raise RuntimeError(
                     f"Remote monitor is already running: {existing.get('tailnet_url', backend_url)}"
                 )
+            raise RuntimeError(
+                "Remote state points to a live process that cannot be verified; refusing to overwrite it."
+            )
+        remote_state_path().unlink(missing_ok=True)
 
     status = _tailscale_status_json()
     backend_port = _find_free_backend_port()
@@ -867,6 +880,7 @@ def remote_start() -> dict[str, object]:
     stdout_file = stdout_path.open("ab")
     stderr_file = stderr_path.open("ab")
     process: subprocess.Popen[bytes] | None = None
+    serve_configured = False
     try:
         kwargs: dict[str, object] = {
             "cwd": str(PROJECT_ROOT),
@@ -893,7 +907,7 @@ def remote_start() -> dict[str, object]:
             **kwargs,
         )
 
-        _wait_for_project_server(backend_url, str(PROJECT_ROOT))
+        _wait_for_project_server(backend_url, project_id())
         _tailscale_command(
             "serve",
             "--bg",
@@ -901,6 +915,7 @@ def remote_start() -> dict[str, object]:
             f"--https={https_port}",
             backend_url,
         )
+        serve_configured = True
         dns_name = _tailscale_dns_name()
         tailnet_url = f"https://{dns_name}:{https_port}/"
 
@@ -916,6 +931,11 @@ def remote_start() -> dict[str, object]:
         _write_remote_state(state)
         return state
     except Exception:
+        if serve_configured:
+            try:
+                _tailscale_command("serve", f"--https={https_port}", "off")
+            except RuntimeError:
+                pass
         if process is not None and process.poll() is None:
             _stop_process(process.pid)
         raise
@@ -936,12 +956,7 @@ def remote_status() -> dict[str, object]:
     backend_alive = False
     backend_url = state.get("backend_url")
     if isinstance(backend_url, str):
-        try:
-            _wait_for_project_server(backend_url, str(PROJECT_ROOT))
-        except RuntimeError:
-            backend_alive = False
-        else:
-            backend_alive = True
+        backend_alive = _project_server_matches(backend_url, project_id())
 
     tailscale_active = False
     https_port = state.get("https_port")
