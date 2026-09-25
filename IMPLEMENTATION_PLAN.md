@@ -135,19 +135,24 @@ Define the smallest stable interface that a CLI-capable agent needs in order to 
 
 Implement:
 
-- `monitor status` with machine-readable JSON output
+- `monitor status` with bounded, machine-readable JSON output
 - a schema version in the status payload
 - current task
-- recent progress
-- unanswered questions with IDs
-- recent answered questions
+- recent progress with IDs and timestamps
+- all unanswered questions with IDs and timestamps
+- a bounded set of recent answered questions with question IDs, question text, answers, and timestamps
 - latest artifact metadata
 - project metrics
 - project identity without exposing local filesystem paths
 - an `AGENT_INTEGRATION.md` document that defines when an agent should call each monitor command
-- tests for the status schema and for existing projects with empty or partial state
+- tests for the exact status schema and for empty, partial, and populated project state
+- a read-only guarantee: reading status must not acknowledge, close, delete, or otherwise mutate monitor state
 
 The contract must remain agent-neutral. Codex is the first consumer, not a dependency of the monitor.
+
+Treat `monitor status` as a state snapshot rather than an event queue. Stable IDs and timestamps let an agent reason about repeated answers without requiring the read operation itself to mutate state. If real-project verification later shows that explicit answer acknowledgement is necessary, add it from observed need rather than assuming it now.
+
+Keep the default payload small enough to place in agent context repeatedly. Do not return an unbounded activity history.
 
 Do not add automatic resume in this phase.
 
@@ -160,12 +165,14 @@ Make the integration easy to add to an existing project without copying this rep
 Implement:
 
 - a command that emits or installs short agent instructions for the current project
-- Codex instructions designed for a repository-level `AGENTS.md`
-- a generic Markdown instruction variant for other CLI-capable agents
+- a short repository-level `AGENTS.md` managed block for Codex
+- a focused repository skill under `.agents/skills/` for the repeatable monitor workflow, with `AGENTS.md` telling Codex when to use it
+- the agent-neutral contract kept separately from the Codex adapter
+- a generic Markdown instruction variant for CLI-capable agents that do not discover Codex repository skills
 - safe handling of an existing `AGENTS.md`: do not overwrite unrelated project instructions
-- an idempotent install/update path
-- an uninstall or removal path for monitor-owned instruction content
-- documentation showing manual integration for agents that use a different instruction-file mechanism
+- explicit begin/end markers around monitor-owned `AGENTS.md` content so install, update, and removal are idempotent
+- an uninstall or removal path for monitor-owned instruction and skill files
+- documentation showing manual integration for agents that use a different instruction-file or skill mechanism
 
 Keep the injected instructions short. They should point the agent to the monitor contract rather than duplicate the entire monitor manual.
 
@@ -175,7 +182,9 @@ Success condition: a fresh project can be prepared for Codex with a small number
 
 Verify the monitor in a real development project rather than adding more infrastructure.
 
-Run at least one substantial Codex task where the human does not manually issue monitor commands on the agent's behalf.
+Run real Codex tasks where the human does not manually issue monitor commands on the agent's behalf.
+
+Use at least two scenarios: one normal task that should complete without a human question, and one task with a genuine decision point that requires a human answer. This checks both over-questioning and failure to ask.
 
 Verify this sequence:
 
@@ -190,6 +199,10 @@ Verify this sequence:
 9. the agent updates project-specific metrics when the project defines them
 10. the agent marks the task complete
 11. the monitor does not receive noisy progress events for trivial internal steps
+12. a fresh later agent run can reconstruct the relevant state without relying on the previous chat transcript
+13. a task that does not require human input completes without creating a gratuitous question
+
+Judge these behaviors from the monitor database/API and agent command history where available, not only from the final prose response.
 
 Repeat the same contract with one non-Codex CLI-capable agent if a suitable agent is available. This second-agent check is a portability test, not a requirement to add vendor-specific code.
 
