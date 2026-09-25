@@ -182,6 +182,40 @@
       font-size: 0.82rem;
       overflow-wrap: anywhere;
     }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+    }
+
+    .metric {
+      padding: 14px;
+      border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
+      border-radius: 11px;
+    }
+
+    .metric-label {
+      display: block;
+      color: GrayText;
+      font-size: 0.85rem;
+      overflow-wrap: anywhere;
+    }
+
+    .metric-value {
+      display: block;
+      margin-top: 6px;
+      font-size: 1.25rem;
+      font-weight: 650;
+      overflow-wrap: anywhere;
+    }
+
+    .metric-updated {
+      display: block;
+      margin-top: 6px;
+      color: GrayText;
+      font-size: 0.75rem;
+    }
   </style>
 </head>
 <body>
@@ -201,6 +235,18 @@
         </div>
         <p id="task-error" class="load-error" hidden>
           Current task could not be loaded. The monitor will try again automatically.
+        </p>
+      </section>
+
+      <section class="card">
+        <div class="card-heading">
+          <h2>Metrics</h2>
+          <span id="metric-count" class="status">0 metrics</span>
+        </div>
+        <p id="metrics-empty" class="empty">No metrics have been recorded yet.</p>
+        <div id="metric-grid" class="metric-grid" hidden></div>
+        <p id="metrics-error" class="load-error" hidden>
+          Metrics could not be loaded. The monitor will try again automatically.
         </p>
       </section>
 
@@ -246,6 +292,11 @@
     const taskStarted = document.querySelector("#task-started");
     const taskError = document.querySelector("#task-error");
 
+    const metricCount = document.querySelector("#metric-count");
+    const metricsEmpty = document.querySelector("#metrics-empty");
+    const metricGrid = document.querySelector("#metric-grid");
+    const metricsError = document.querySelector("#metrics-error");
+
     const progressList = document.querySelector("#progress-list");
     const progressEmpty = document.querySelector("#progress-empty");
     const progressError = document.querySelector("#progress-error");
@@ -284,6 +335,42 @@
       taskStarted.textContent = `Started ${formatTimestamp(task.started_at)}`;
       taskEmpty.hidden = true;
       taskActive.hidden = false;
+    }
+
+    function renderMetrics(items) {
+      metricGrid.replaceChildren();
+      metricCount.textContent = `${items.length} ${items.length === 1 ? "metric" : "metrics"}`;
+
+      if (items.length === 0) {
+        metricGrid.hidden = true;
+        metricsEmpty.hidden = false;
+        return;
+      }
+
+      for (const item of items) {
+        const card = document.createElement("div");
+        const label = document.createElement("span");
+        const value = document.createElement("span");
+        const updated = document.createElement("time");
+
+        card.className = "metric";
+
+        label.className = "metric-label";
+        label.textContent = item.label;
+
+        value.className = "metric-value";
+        value.textContent = item.unit ? `${item.value} ${item.unit}` : item.value;
+
+        updated.className = "metric-updated";
+        updated.dateTime = item.updated_at;
+        updated.textContent = formatTimestamp(item.updated_at);
+
+        card.append(label, value, updated);
+        metricGrid.append(card);
+      }
+
+      metricsEmpty.hidden = true;
+      metricGrid.hidden = false;
     }
 
     function renderProgress(items) {
@@ -461,6 +548,21 @@
       }
     }
 
+    async function refreshMetrics() {
+      try {
+        const response = await fetch("/api/metrics", { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const payload = await response.json();
+        renderMetrics(Array.isArray(payload.metrics) ? payload.metrics : []);
+        metricsError.hidden = true;
+      } catch (error) {
+        metricsError.hidden = false;
+      }
+    }
+
     async function refreshProgress() {
       try {
         const response = await fetch("/api/progress", { cache: "no-store" });
@@ -512,6 +614,7 @@
 
     function refreshDashboard() {
       refreshTask();
+      refreshMetrics();
       refreshProgress();
       refreshArtifact();
       refreshQuestions();
