@@ -6,9 +6,9 @@ The goal is to let a human see, at a glance, what an AI agent is doing without r
 
 ## Current status
 
-Phases 1 through 6 are implemented and verified on the N100 and iPhone through Tailscale Serve.
+Phases 1 through 7 are implemented and verified on the N100 and iPhone through Tailscale Serve.
 
-The dashboard supports progress updates, a current task, unanswered questions, browser-submitted answers, and links to registered artifact snapshots. The data is stored locally and the dashboard refreshes automatically.
+The dashboard supports progress updates, a current task, unanswered questions, browser-submitted answers, registered artifact snapshots, and project-specific metrics. The data is stored locally and the dashboard refreshes automatically.
 
 ## Run the dashboard
 
@@ -254,7 +254,7 @@ HTML artifacts are served with a browser sandbox so they do not inherit the moni
 
 ## Record project-specific metrics
 
-Phase 7 adds arbitrary project metrics without defining a fixed schema for every project.
+Phase 7 provides arbitrary project metrics without defining a fixed schema for every project.
 
 Set a metric:
 

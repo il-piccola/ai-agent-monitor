@@ -71,7 +71,7 @@ The dashboard should provide a link to the latest registered artifact.
 
 Artifact records should eventually include enough information to identify the exact reviewed version, such as a hash and, when available, the Git commit.
 
-## Phase 7: Add project-specific metrics ← implementation complete, deployment verification pending
+## Phase 7: Add project-specific metrics ✅
 
 Allow projects to record optional values such as:
 
@@ -83,7 +83,7 @@ Allow projects to record optional values such as:
 
 The shared monitor should not decide which metrics every project must use.
 
-## Phase 8: Use the monitor from other projects
+## Phase 8: Use the monitor from other projects ← current
 
 Package the shared monitor as a CLI tool.
 
