@@ -18,57 +18,58 @@ The original monitor deployment runs on the N100 Windows machine through Tailsca
 - iPhone access: verified through Phase 9
 - Phase 8 installed CLI and project isolation: verified on N100
 - Phase 9 project-specific remote access: verified on N100 and iPhone
-- automatic Windows logon startup: Phase 10 implementation pending N100 verification
+- Phase 10 automatic Windows logon startup: revised implementation awaiting N100 verification
 
-## Phase 10 implementation
+## Phase 10 status
 
-Phase 10 is implemented in `main` and needs N100 verification.
+The first Phase 10 implementation used Windows Task Scheduler. N100 verification reached the registration step and failed with `Access is denied` because the normal `LETO\ilpic` user cannot register the scheduled task. No task was created, Project A remote remained stopped, and the production 443/8443/9443 Serve mappings and backend 8765 remained unchanged.
 
-Implemented behavior:
+Because using another administrator account could change the logon-user behavior, the Task Scheduler approach was not continued.
 
-- package version is `0.10.0`
-- `monitor startup install` creates a Windows Task Scheduler `ONLOGON` task for the current project
-- task names use the current project's hashed project ID
-- startup files live under the project's ignored `.agent-monitor/runtime/`
-- the launcher uses the Python executable from the installed tool environment, so the CLI bin directory does not need to be on PATH
-- the launcher changes to the saved project directory before starting remote access
-- it checks `remote status` first and exits successfully if the endpoint is already healthy
-- otherwise it retries `remote start` up to 12 times with five-second pauses while Tailscale initializes
-- `monitor startup status` checks whether the expected project-specific task exists
-- `monitor startup remove` removes only the current project's matching task and local startup files
-- startup state from a different project or a mismatched task name is refused
-- installation cleanup removes a newly-created task if local startup-state persistence fails
+Phase 10 has now been revised in `main`:
+
+- package version is `0.10.1`
+- `monitor startup install` uses the current user's Windows Startup folder instead of Task Scheduler
+- administrator rights are not required by the monitor for registration
+- the Startup-folder launcher filename includes the current project's hashed project ID
+- the launcher calls the project's ignored `.agent-monitor/runtime/startup.ps1`
+- the installed Python executable is used directly, so `C:\Users\ilpic\.local\bin` does not need to be on PATH
+- the launcher changes to the saved project directory
+- the PowerShell script checks `remote status` before starting another remote
+- it retries `remote start` up to 12 times with five-second delays while Tailscale initializes
+- `monitor startup status` verifies both local startup state and the expected per-user launcher
+- `monitor startup remove` removes only the current project's matching launcher and runtime startup files
+- mismatched project state or launcher paths are refused
 - non-Windows platforms reject startup integration explicitly
-- Phase 9 remote lifecycle and the established production 8765/9443 service are unchanged
+- Phase 9 remote lifecycle and the production 8765/9443 service are unchanged
 
-The standard-library test suite now contains 52 tests, including Task Scheduler naming, PowerShell path escaping, install/status/remove behavior, project-boundary refusal, non-Windows refusal, and the Tailscale-startup retry script.
+The repository test suite now contains 53 tests. The revised Startup-folder implementation has not yet been executed on the N100 because the user is currently away from the machine.
 
 ## Next task
 
-On the N100 machine:
+When N100 access is available:
 
 1. pull the latest `main`
-2. run `python -m unittest discover -s tests -v` and confirm all 52 tests pass
-3. reinstall the CLI with `uv tool install --force .`
-4. confirm the installed package reports version `0.10.0`
-5. use the Phase 8 Project A test directory and ensure its Phase 9 remote is currently stopped
-6. run `monitor startup install` from Project A
-7. run `monitor startup status` and verify the expected project-specific task is installed
-8. inspect Task Scheduler or `schtasks /Query` and confirm the task trigger is user logon and the task command points to Project A's runtime PowerShell script
-9. sign out and back in, or reboot and log in to the same Windows user
-10. without manually running `monitor remote start`, verify Project A's `monitor remote status` reports `backend_alive: true` and `tailscale_active: true`
+2. run `python -m unittest discover -s tests -v` and confirm all 53 tests pass
+3. reinstall with `uv tool install --force .`
+4. confirm installed package version `0.10.1`
+5. use only the disposable Phase 8 Project A directory; confirm its Phase 9 remote is stopped
+6. run `monitor startup install` as the normal `LETO\ilpic` user without elevation
+7. run `monitor startup status` and confirm `installed: true`
+8. confirm the expected Project A `.cmd` launcher exists in the current user's Windows Startup folder
+9. sign out and back in, or reboot and log in as the same `LETO\ilpic` user
+10. without manually running `monitor remote start`, verify Project A `remote status` reports `backend_alive: true` and `tailscale_active: true`
 11. verify the Project A tailnet URL returns HTTP 200 from the N100 and iPhone
 12. verify production HTTPS 9443 and existing Serve mappings on 443 and 8443 remain unchanged
-13. run `monitor startup remove` from Project A
-14. verify the scheduled task is gone
-15. run `monitor remote stop` in Project A so the temporary Phase 10 endpoint is also stopped
-16. confirm production backend 8765 and HTTPS 9443 still return HTTP 200
+13. run `monitor startup remove` from Project A and confirm `startup status` becomes not installed
+14. run `monitor remote stop` in Project A
+15. confirm production backend 8765 and HTTPS 9443 still return HTTP 200
 
-Do not configure startup for the production repository service during this first Phase 10 verification. Use only the disposable Project A test project.
+Do not configure automatic startup for the production repository service during this verification.
 
 ## Not implemented yet
 
-- Phase 10 N100 logon/reboot verification
+- Phase 10 N100 logon/reboot verification for the revised Startup-folder implementation
 - Slack, Discord, or Telegram integration
 - automatic agent resume
 - automatic LLM cost calculation
