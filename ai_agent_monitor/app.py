@@ -786,7 +786,7 @@ def parse_server_args(argv: list[str]) -> argparse.Namespace:
 
 def parse_progress_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog="monitor.py progress",
+        prog="monitor progress",
         description="Record a progress message for the dashboard.",
     )
     parser.add_argument("message", nargs="+", help="Progress message to record")
@@ -795,7 +795,7 @@ def parse_progress_args(argv: list[str]) -> argparse.Namespace:
 
 def parse_task_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog="monitor.py task",
+        prog="monitor task",
         description="Start or complete the current task.",
     )
     subparsers = parser.add_subparsers(dest="action", required=True)
@@ -809,7 +809,7 @@ def parse_task_args(argv: list[str]) -> argparse.Namespace:
 
 def parse_ask_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog="monitor.py ask",
+        prog="monitor ask",
         description="Record a question for the human.",
     )
     parser.add_argument("question", nargs="+", help="Question to record")
@@ -818,7 +818,7 @@ def parse_ask_args(argv: list[str]) -> argparse.Namespace:
 
 def parse_metric_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog="monitor.py metric",
+        prog="monitor metric",
         description="Set or delete a project-specific metric.",
     )
     subparsers = parser.add_subparsers(dest="action", required=True)
@@ -836,7 +836,7 @@ def parse_metric_args(argv: list[str]) -> argparse.Namespace:
 
 def parse_artifact_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog="monitor.py artifact",
+        prog="monitor artifact",
         description="Register a file snapshot as the latest artifact.",
     )
     parser.add_argument("path", help="Artifact file path")
