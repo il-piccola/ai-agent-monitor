@@ -6,11 +6,9 @@ The goal is to let a human see, at a glance, what an AI agent is doing without r
 
 ## Current status
 
-Phase 1 is complete and has been verified from an iPhone through Tailscale Serve.
+Phases 1 through 5 are implemented and verified on the N100 and iPhone through Tailscale Serve.
 
-Phase 2 is implemented in the repository and is awaiting verification on the N100 deployment.
-
-Progress messages are now stored in a local SQLite database and exposed to the dashboard through `/api/progress`. The dashboard refreshes the progress list automatically.
+The dashboard supports progress updates, a current task, unanswered questions, and browser-submitted answers. The data is stored in local SQLite and the dashboard refreshes automatically.
 
 ## Run the dashboard
 
@@ -92,7 +90,7 @@ This repository is public. Do not commit API keys, access tokens, private projec
 
 ## Serve inside a Tailscale tailnet
 
-The repository includes helpers for deploying the Phase 1 dashboard through Tailscale Serve.
+The repository includes helpers for deploying the dashboard through Tailscale Serve.
 
 ### Linux
 
@@ -153,7 +151,7 @@ The backend does not start automatically after a Windows reboot. Run the start h
 
 ## Run tests
 
-The Phase 2 storage tests use only Python's standard library:
+The storage tests use only Python's standard library:
 
 ```bash
 python -m unittest discover -s tests -v
@@ -189,12 +187,12 @@ python monitor.py ask "Should I use option A or option B?"
 
 Questions are stored in the local SQLite database with an `open` status. The dashboard requests `/api/questions` every three seconds, shows the number of unanswered questions, and lists the newest questions first.
 
-Phase 4 only displays unanswered questions. Answering them from the browser belongs to Phase 5.
+Phase 4 displays unanswered questions. Phase 5 adds browser-based answers.
 
 
 ## Answer a question from the dashboard
 
-Phase 5 adds an answer form below each unanswered question.
+Each unanswered question has an answer form below it.
 
 When the human submits an answer:
 

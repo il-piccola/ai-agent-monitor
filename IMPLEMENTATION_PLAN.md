@@ -55,7 +55,7 @@ The dashboard should list unanswered questions.
 
 At first, showing the question is enough.
 
-## Phase 5: Answer questions in the browser ← implementation complete, deployment verification pending
+## Phase 5: Answer questions in the browser ✅
 
 Add an answer field to the dashboard.
 
@@ -63,7 +63,7 @@ A human can answer a question in the browser. The answer is stored so the agent 
 
 The first implementation does not need to restart the agent automatically.
 
-## Phase 6: Register artifacts
+## Phase 6: Register artifacts ← current
 
 Allow the agent to register a generated file, for example a report, HTML preview, image, or document.
 
