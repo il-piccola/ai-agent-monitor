@@ -72,7 +72,9 @@ evidence is recorded in `PHASE13_VERIFICATION.md`. Scenario B has not started.
 
 ## Next task
 
-Scenario A evidence has been reviewed and accepted. Begin Scenario B in the same real Codex project or another safe real project.
+Scenario B attempt 1 proved dashboard answering and answer consumption, but not transcript-independent recovery. The later Codex execution inherited the original conversation context, so Phase 13 is still incomplete.
+
+Repeat Scenario B with a new genuine decision task. After answering from the iPhone, open a completely independent Codex chat from the target repository rather than creating a task/run from the original conversation. The independent chat must receive only a short continuation request and must recover the active task and answer from monitor state.
 
 Scenario B requirements:
 
