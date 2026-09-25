@@ -1,4 +1,5 @@
 import hashlib
+import io
 import json
 import os
 import sqlite3
@@ -6,7 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from contextlib import closing
+from contextlib import closing, redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
@@ -625,6 +626,23 @@ class WindowsStartupTests(MonitorStorageTestCase):
         self.assertIn("-m ai_agent_monitor remote start", script_path.read_text(encoding="utf-8"))
         self.assertIn("powershell.exe", launcher_path.read_text(encoding="utf-8"))
         self.assertEqual(monitor.read_startup_state(), state)
+
+    def test_startup_install_cli_reports_launcher_path(self) -> None:
+        launcher_path = r"C:\Users\test\Startup\AI Agent Monitor abc123.cmd"
+        output = io.StringIO()
+
+        with (
+            patch.object(monitor.sys, "argv", ["monitor", "startup", "install"]),
+            patch.object(
+                monitor,
+                "startup_install",
+                return_value={"launcher_path": launcher_path},
+            ),
+            redirect_stdout(output),
+        ):
+            monitor.main()
+
+        self.assertIn(launcher_path, output.getvalue())
 
     def test_startup_status_reports_missing_launcher(self) -> None:
         with (

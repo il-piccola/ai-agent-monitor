@@ -18,7 +18,7 @@ The original monitor deployment runs on the N100 Windows machine through Tailsca
 - iPhone access: verified through Phase 9
 - Phase 8 installed CLI and project isolation: verified on N100
 - Phase 9 project-specific remote access: verified on N100 and iPhone
-- Phase 10 automatic Windows logon startup: revised implementation awaiting N100 verification
+- Phase 10 Startup-folder launcher: installed for Project A on N100; logon verification pending
 
 ## Phase 10 status
 
@@ -43,7 +43,7 @@ Phase 10 has now been revised in `main`:
 - non-Windows platforms reject startup integration explicitly
 - Phase 9 remote lifecycle and the production 8765/9443 service are unchanged
 
-The repository test suite now contains 53 tests. The revised Startup-folder implementation has not yet been executed on the N100 because the user is currently away from the machine.
+The 53 tests on `main` passed on the N100. During real installation, the launcher and state were written correctly, but the CLI success message still referenced the old Task Scheduler `task_name` field and exited with `KeyError`. This was corrected locally and covered by a new regression test; all 54 tests pass. The corrected CLI was reinstalled, and Project A's `.cmd` launcher and `startup status` (`installed: true`) were verified as the normal `LETO\ilpic` user. The remote remains stopped while logon verification is pending.
 
 ## Continuous integration
 
@@ -54,13 +54,12 @@ A GitHub Actions workflow now runs package installation, `monitor --help`, and t
 When N100 access is available:
 
 1. pull the latest `main`
-2. run `python -m unittest discover -s tests -v` and confirm all 53 tests pass
+2. run `python -m unittest discover -s tests -v` and confirm all 54 tests pass
 3. reinstall with `uv tool install --force .`
 4. confirm installed package version `0.10.1`
 5. use only the disposable Phase 8 Project A directory; confirm its Phase 9 remote is stopped
-6. run `monitor startup install` as the normal `LETO\ilpic` user without elevation
-7. run `monitor startup status` and confirm `installed: true`
-8. confirm the expected Project A `.cmd` launcher exists in the current user's Windows Startup folder
+6. Project A startup is installed as the normal `LETO\ilpic` user without elevation
+7. confirm `monitor startup status` reports `installed: true` and the expected Project A `.cmd` launcher exists in the current user's Windows Startup folder
 9. sign out and back in, or reboot and log in as the same `LETO\ilpic` user
 10. without manually running `monitor remote start`, verify Project A `remote status` reports `backend_alive: true` and `tailscale_active: true`
 11. verify the Project A tailnet URL returns HTTP 200 from the N100 and iPhone

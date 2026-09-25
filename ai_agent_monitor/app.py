@@ -1522,7 +1522,7 @@ def main() -> None:
         args = parse_startup_args(sys.argv[2:])
         if args.action == "install":
             state = startup_install()
-            print(f"Startup task installed: {state['task_name']}")
+            print(f"Startup launcher installed: {state['launcher_path']}")
             return
         if args.action == "status":
             print(json.dumps(startup_status(), ensure_ascii=False, indent=2))
