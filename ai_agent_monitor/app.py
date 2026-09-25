@@ -16,6 +16,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from contextlib import contextmanager
@@ -716,9 +717,37 @@ def _tailscale_used_ports(status: dict[str, object]) -> set[int]:
     return ports
 
 
-def _find_free_backend_port() -> int:
+def _tailscale_proxy_ports(status: dict[str, object]) -> set[int]:
+    ports: set[int] = set()
+    web = status.get("Web")
+    if not isinstance(web, dict):
+        return ports
+
+    for entry in web.values():
+        if not isinstance(entry, dict):
+            continue
+        handlers = entry.get("Handlers")
+        if not isinstance(handlers, dict):
+            continue
+        for handler in handlers.values():
+            if not isinstance(handler, dict):
+                continue
+            proxy = handler.get("Proxy")
+            if not isinstance(proxy, str):
+                continue
+            try:
+                port = urllib.parse.urlsplit(proxy).port
+            except ValueError:
+                continue
+            if port is not None:
+                ports.add(port)
+    return ports
+
+
+def _find_free_backend_port(status: dict[str, object] | None = None) -> int:
+    reserved = _tailscale_proxy_ports(status or {})
     for port in range(8765, 8800):
-        if _port_is_free(HOST, port):
+        if port not in reserved and _port_is_free(HOST, port):
             return port
     raise RuntimeError("No free backend port found in 8765-8799.")
 
@@ -884,7 +913,7 @@ def remote_start() -> dict[str, object]:
         remote_state_path().unlink(missing_ok=True)
 
     status = _tailscale_status_json()
-    backend_port = _find_free_backend_port()
+    backend_port = _find_free_backend_port(status)
     https_port = _find_free_tailscale_port(status)
     backend_url = f"http://{HOST}:{backend_port}"
 

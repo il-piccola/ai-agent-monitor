@@ -191,7 +191,7 @@ Each monitored project keeps remote state under its own `.agent-monitor/runtime/
 
 The implementation deliberately does not use Tailscale Funnel. The access boundary is Tailscale tailnet membership; Phase 9 does not add a second application username/password system.
 
-Port selection preserves unrelated services. Existing Tailscale Serve ports are read before choosing a port, and the monitor selects from `9443-9499` or `10443-10499`. The backend range remains `8765-8799`.
+Port selection preserves unrelated services. Existing Tailscale Serve HTTPS ports and the local ports used by its proxy targets are read before choosing ports. The monitor selects HTTPS from `9443-9499` or `10443-10499` and avoids backend ports in `8765-8799` that are already listening or still referenced by another Serve proxy.
 
 Stopping is conservative:
 

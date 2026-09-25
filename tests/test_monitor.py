@@ -422,6 +422,34 @@ class RemoteAccessTests(MonitorStorageTestCase):
             {443, 8443, 9443, 10443},
         )
 
+    def test_tailscale_proxy_backend_ports_are_reserved(self) -> None:
+        status = {
+            "Web": {
+                "host.example.ts.net:9443": {
+                    "Handlers": {
+                        "/": {"Proxy": "http://127.0.0.1:8765"},
+                        "/api": {"Proxy": "http://localhost:8766"},
+                    }
+                }
+            }
+        }
+
+        self.assertEqual(monitor._tailscale_proxy_ports(status), {8765, 8766})
+
+    def test_find_free_backend_port_skips_existing_serve_proxy_targets(self) -> None:
+        status = {
+            "Web": {
+                "host.example.ts.net:9443": {
+                    "Handlers": {
+                        "/": {"Proxy": "http://127.0.0.1:8765"},
+                    }
+                }
+            }
+        }
+
+        with patch.object(monitor, "_port_is_free", return_value=True):
+            self.assertEqual(monitor._find_free_backend_port(status), 8766)
+
     def test_serve_handler_proxy_reads_root_proxy(self) -> None:
         status = {
             "Web": {
