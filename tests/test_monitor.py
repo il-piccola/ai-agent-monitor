@@ -526,5 +526,47 @@ class RemoteAccessTests(MonitorStorageTestCase):
             self.assertEqual(monitor._find_free_tailscale_port(status), 9445)
 
 
+class RemoteProjectSecurityTests(MonitorStorageTestCase):
+    def test_project_info_does_not_expose_local_paths(self) -> None:
+        info = monitor.project_info()
+
+        self.assertIn("project_id", info)
+        self.assertIn("name", info)
+        self.assertNotIn("project_root", info)
+        self.assertNotIn("data_dir", info)
+
+    def test_init_project_updates_existing_gitignore_without_overwriting(self) -> None:
+        monitor.DATA_DIR.mkdir(parents=True, exist_ok=True)
+        ignore_path = monitor.DATA_DIR / ".gitignore"
+        ignore_path.write_text("custom-entry/\nmonitor.db\n", encoding="utf-8")
+
+        monitor.init_project(False)
+
+        lines = ignore_path.read_text(encoding="utf-8").splitlines()
+        self.assertIn("custom-entry/", lines)
+        self.assertIn("monitor.db", lines)
+        self.assertIn("runtime/", lines)
+        self.assertEqual(lines.count("monitor.db"), 1)
+
+    def test_remote_start_refuses_unverified_live_process(self) -> None:
+        monitor._write_remote_state(
+            {
+                "project_root": str(monitor.PROJECT_ROOT),
+                "backend_port": 8766,
+                "https_port": 9444,
+                "pid": 1234,
+                "backend_url": "http://127.0.0.1:8766",
+                "tailnet_url": "https://host.example.ts.net:9444/",
+            }
+        )
+
+        with (
+            patch.object(monitor, "_process_is_alive", return_value=True),
+            patch.object(monitor, "_project_server_matches", return_value=False),
+        ):
+            with self.assertRaises(RuntimeError):
+                monitor.remote_start()
+
+
 if __name__ == "__main__":
     unittest.main()
