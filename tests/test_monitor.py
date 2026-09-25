@@ -331,6 +331,15 @@ class ProjectBoundaryTests(MonitorStorageTestCase):
         with patch.object(monitor, "DEFAULT_DASHBOARD_PATH", bundled):
             self.assertEqual(monitor.dashboard_path(), project_dashboard)
 
+    def test_bundled_dashboard_matches_source_dashboard(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        source_dashboard = repo_root / "dashboard.html"
+
+        self.assertEqual(
+            monitor.DEFAULT_DASHBOARD_PATH.read_bytes(),
+            source_dashboard.read_bytes(),
+        )
+
 
 class InstalledStyleCliIsolationTests(unittest.TestCase):
     def test_module_cli_keeps_two_projects_separate(self) -> None:
