@@ -4,10 +4,14 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import mimetypes
 import re
 import sqlite3
+import subprocess
 import sys
+import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -83,6 +87,21 @@ def connect_db() -> sqlite3.Connection:
         """
     )
     _ensure_question_columns(connection)
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS artifacts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            display_name TEXT NOT NULL,
+            original_name TEXT NOT NULL,
+            storage_name TEXT NOT NULL UNIQUE,
+            size_bytes INTEGER NOT NULL,
+            sha256 TEXT NOT NULL,
+            mime_type TEXT NOT NULL,
+            git_commit TEXT,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
     connection.commit()
     return connection
 
@@ -285,6 +304,176 @@ def list_answered_questions(limit: int = 50) -> list[dict[str, object]]:
     ]
 
 
+def artifact_dir() -> Path:
+    return DATA_DIR / "artifacts"
+
+
+def _git_commit_for_path(path: Path) -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(path.parent), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=True,
+        )
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return None
+
+    commit = result.stdout.strip()
+    return commit or None
+
+
+def _public_artifact(row: tuple[object, ...]) -> dict[str, object]:
+    return {
+        "id": row[0],
+        "display_name": row[1],
+        "original_name": row[2],
+        "size_bytes": row[4],
+        "sha256": row[5],
+        "mime_type": row[6],
+        "git_commit": row[7],
+        "created_at": row[8],
+        "url": f"/artifacts/{row[0]}",
+    }
+
+
+def register_artifact(
+    path: str | Path,
+    display_name: str | None = None,
+    *,
+    allowed_root: Path | None = None,
+) -> dict[str, object]:
+    source = Path(path).expanduser().resolve(strict=True)
+    if not source.is_file():
+        raise ValueError("Artifact path must point to a regular file.")
+
+    root = (allowed_root or Path.cwd()).resolve()
+    try:
+        source.relative_to(root)
+    except ValueError as exc:
+        raise ValueError("Artifact must be inside the current working directory.") from exc
+
+    name = (display_name or source.name).strip()
+    if not name:
+        raise ValueError("Artifact display name must not be empty.")
+
+    destination_dir = artifact_dir()
+    destination_dir.mkdir(parents=True, exist_ok=True)
+    storage_name = f"{uuid.uuid4().hex}{source.suffix.lower()}"
+    destination = destination_dir / storage_name
+
+    digest = hashlib.sha256()
+    size_bytes = 0
+    try:
+        with source.open("rb") as src, destination.open("xb") as dst:
+            while chunk := src.read(1024 * 1024):
+                dst.write(chunk)
+                digest.update(chunk)
+                size_bytes += len(chunk)
+
+        created_at = utc_now()
+        mime_type = mimetypes.guess_type(source.name)[0] or "application/octet-stream"
+        git_commit = _git_commit_for_path(source)
+
+        with database_session() as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO artifacts (
+                    display_name,
+                    original_name,
+                    storage_name,
+                    size_bytes,
+                    sha256,
+                    mime_type,
+                    git_commit,
+                    created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    name,
+                    source.name,
+                    storage_name,
+                    size_bytes,
+                    digest.hexdigest(),
+                    mime_type,
+                    git_commit,
+                    created_at,
+                ),
+            )
+            artifact_id = cursor.lastrowid
+    except Exception:
+        destination.unlink(missing_ok=True)
+        raise
+
+    record = (
+        artifact_id,
+        name,
+        source.name,
+        storage_name,
+        size_bytes,
+        digest.hexdigest(),
+        mime_type,
+        git_commit,
+        created_at,
+    )
+    return _public_artifact(record)
+
+
+def get_latest_artifact() -> dict[str, object] | None:
+    with database_session() as connection:
+        row = connection.execute(
+            """
+            SELECT
+                id,
+                display_name,
+                original_name,
+                storage_name,
+                size_bytes,
+                sha256,
+                mime_type,
+                git_commit,
+                created_at
+            FROM artifacts
+            ORDER BY id DESC
+            LIMIT 1
+            """
+        ).fetchone()
+
+    if row is None:
+        return None
+    return _public_artifact(row)
+
+
+def get_artifact_record(artifact_id: int) -> dict[str, object] | None:
+    with database_session() as connection:
+        row = connection.execute(
+            """
+            SELECT
+                id,
+                display_name,
+                original_name,
+                storage_name,
+                size_bytes,
+                sha256,
+                mime_type,
+                git_commit,
+                created_at
+            FROM artifacts
+            WHERE id = ?
+            """,
+            (artifact_id,),
+        ).fetchone()
+
+    if row is None:
+        return None
+
+    public = _public_artifact(row)
+    public["storage_name"] = row[3]
+    return public
+
+
 class DashboardHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         path = self.path.split("?", 1)[0]
@@ -313,6 +502,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
         if path == "/api/answers":
             self._serve_json({"answers": list_answered_questions()})
+            return
+
+        if path == "/api/artifacts/latest":
+            self._serve_json({"artifact": get_latest_artifact()})
+            return
+
+        artifact_match = re.fullmatch(r"/artifacts/(\d+)", path)
+        if artifact_match is not None:
+            self._serve_artifact(int(artifact_match.group(1)))
             return
 
         self.send_error(404, "Not Found")
@@ -360,6 +558,30 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if not isinstance(payload, dict):
             raise ValueError("JSON body must be an object.")
         return payload
+
+    def _serve_artifact(self, artifact_id: int) -> None:
+        artifact = get_artifact_record(artifact_id)
+        if artifact is None:
+            self.send_error(404, "Artifact not found")
+            return
+
+        file_path = artifact_dir() / str(artifact["storage_name"])
+        if not file_path.is_file():
+            self.send_error(410, "Artifact snapshot is missing")
+            return
+
+        self.send_response(200)
+        self.send_header("Content-Type", str(artifact["mime_type"]))
+        self.send_header("Content-Length", str(file_path.stat().st_size))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        if artifact["mime_type"] == "text/html":
+            self.send_header("Content-Security-Policy", "sandbox allow-scripts")
+        self.end_headers()
+
+        with file_path.open("rb") as artifact_file:
+            while chunk := artifact_file.read(1024 * 1024):
+                self.wfile.write(chunk)
 
     def _serve_dashboard(self) -> None:
         try:
@@ -434,6 +656,16 @@ def parse_ask_args(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def parse_artifact_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="monitor.py artifact",
+        description="Register a file snapshot as the latest artifact.",
+    )
+    parser.add_argument("path", help="Artifact file path")
+    parser.add_argument("--name", help="Display name shown on the dashboard")
+    return parser.parse_args(argv)
+
+
 def serve(port: int) -> None:
     if not DASHBOARD_PATH.is_file():
         raise SystemExit(f"dashboard.html was not found at {DASHBOARD_PATH}")
@@ -483,6 +715,15 @@ def main() -> None:
 
     if len(sys.argv) > 1 and sys.argv[1] == "answers":
         print(json.dumps({"answers": list_answered_questions()}, ensure_ascii=False, indent=2))
+        return
+
+    if len(sys.argv) > 1 and sys.argv[1] == "artifact":
+        args = parse_artifact_args(sys.argv[2:])
+        artifact = register_artifact(args.path, args.name)
+        print(
+            f"Artifact #{artifact['id']}: {artifact['display_name']} "
+            f"({artifact['sha256']})"
+        )
         return
 
     args = parse_server_args(sys.argv[1:])
