@@ -158,7 +158,7 @@ Do not add automatic resume in this phase.
 
 Success condition: an agent can learn the current monitored state using one command and can determine which existing CLI action to take next without reading SQLite, HTML, or the monitor source code.
 
-## Phase 12: Project onboarding for Codex and other agents
+## Phase 12: Project onboarding for Codex and other agents ← implementation complete, verification pending
 
 Make the integration easy to add to an existing project without copying this repository.
 
