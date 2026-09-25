@@ -6,6 +6,7 @@ venv/
 
 # Local runtime data
 .runtime/
+.agent-monitor/artifacts/
 .agent-monitor/*.db
 .agent-monitor/*.db-shm
 .agent-monitor/*.db-wal
