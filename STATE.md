@@ -6,7 +6,7 @@
 - Visibility: public
 - Default branch: `main`
 - Completed phases: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
-- Current phase: Phase 11 planned and validated; implementation not started
+- Current phase: 11 implementation complete; verification pending
 
 ## Verified deployment
 
@@ -18,55 +18,59 @@ The original monitor deployment runs on the N100 Windows machine through Tailsca
 - iPhone access: verified through Phase 10
 - Phase 8 installed CLI and project isolation: verified on N100
 - Phase 9 project-specific remote access: verified on N100 and iPhone
-- Phase 10 per-user logon startup: verified on N100; the Project A test launcher was removed after verification
-- production backend currently runs on port 8765 (PID 9760); production auto-start remains unconfigured
+- Phase 10 per-user logon startup: verified on N100
+- production automatic startup remains unconfigured
 
-## Phase 10 status
+## Phase 11 implementation
 
-The first Task Scheduler implementation could not register as the normal `LETO\ilpic` user, so it was replaced by a per-user Windows Startup-folder launcher. Package version `0.10.2` is installed on the N100.
+Package version `0.11.0` implements the agent-neutral integration contract.
 
-Verification results:
+Implemented behavior:
 
-- all 56 standard-library tests passed on the N100
-- Project A's Startup launcher installed as the normal user without elevation
-- after sign-out and re-login, Project A remote started without a manual `remote start` command and returned HTTP 200
-- the first logon run reused port 8765 after the original production process ended at sign-out, so the existing 9443 mapping temporarily served Project A; Project A was stopped and the original production backend was restored
-- port selection was fixed to reserve local backend ports still referenced by Tailscale Serve proxies, and a regression test covers this collision
-- the startup success message was fixed to report the launcher path
-- with production active, Project A used backend 8766 / HTTPS 9444; both dashboards returned HTTP 200, the production URL remained the standard dashboard, and the iPhone showed `Project A Monitor` with Project A metrics
-- after verification, the Project A Startup launcher and remote Serve entry were removed; startup and remote status both report inactive
-- final production local HTTP 8765 and tailnet HTTPS 9443 both returned HTTP 200; Serve mappings 443 -> 4174, 8443 -> 5173, and 9443 -> 8765 remained unchanged
-- production automatic startup was not configured; the current production process runs in the logged-in user's session and will end at a later sign-out
+- `monitor status` prints JSON only
+- status schema version is `1`
+- project identity includes the hashed project ID and project directory name, not a local filesystem path
+- current task is included
+- recent progress is limited to the newest 10 records
+- all unanswered questions are included
+- recent answers are limited to the newest 10 records
+- latest artifact metadata is included
+- all project metrics are included
+- progress, question, and answer records retain IDs and timestamps
+- status does not acknowledge answers, close questions, or complete tasks
+- an uninitialized project returns an empty snapshot without creating `.agent-monitor/monitor.db`
+- `AGENT_INTEGRATION.md` defines when agents should use the existing monitor commands
+- the contract is independent of Codex; Codex onboarding remains Phase 12
 
-## Continuous integration
-
-A GitHub Actions workflow runs package installation, `monitor --help`, and the standard-library test suite on Windows and Ubuntu with Python 3.10 and 3.12. The N100 logon and iPhone checks were also completed for Phase 10.
+The standard-library test suite now contains 61 tests. New tests cover exact empty status shape, partial state, populated state, history bounds, more than 50 open questions, read-only behavior, and pure-JSON CLI output.
 
 ## Next task
 
-Implement Phase 11 only.
+Verify Phase 11 before beginning Phase 12.
 
-Phase 11 scope:
+On the N100:
 
-1. add bounded, read-only, machine-readable `monitor status`
-2. include a schema version, project identity, current task, recent progress, open questions, recent answers, latest artifact, and metrics
-3. include stable IDs and timestamps where the underlying records provide them
-4. add `AGENT_INTEGRATION.md` with agent-neutral rules for when to call each existing monitor command
-5. test empty, partial, and populated state and verify that reading status does not mutate monitor state
+1. pull the latest `main`
+2. run the full test suite and confirm all 61 tests pass
+3. reinstall the CLI with `uv tool install --force .`
+4. confirm package version `0.11.0`
+5. from the ai-agent-monitor repository, run `monitor status` and confirm valid JSON is returned
+6. confirm the JSON contains `schema_version: 1`, project identity, current task, recent progress, open questions, recent answers, latest artifact, and metrics
+7. run `monitor status` twice and confirm the existing dashboard/task/question state is unchanged
+8. from a new empty temporary project directory, run `monitor status` and confirm it returns an empty snapshot without creating `.agent-monitor/monitor.db`
 
-Do not begin Phase 12 onboarding, automatic resume, notifications, or automatic telemetry until Phase 11 is verified.
+Do not install Codex `AGENTS.md` or repository skills yet. That is Phase 12.
 
 ## Not implemented yet
 
+- Phase 11 N100 installed-CLI verification
+- Phase 12 Codex/agent onboarding
+- real-agent Phase 13 workflow verification
 - Slack, Discord, or Telegram integration
 - automatic agent resume
 - automatic LLM cost calculation
 - separate application-level authentication beyond Tailscale tailnet membership
 - pre-login Windows service startup
-
-## Local workspace note
-
-`uv tool install --force .` may generate `build/` and `*.egg-info/` directories in the checkout. These build artifacts are ignored by Git and do not need to be deleted.
 
 ## Handoff instruction
 
@@ -76,5 +80,6 @@ A new assistant or developer should read, in this order:
 2. `IMPLEMENTATION_PLAN.md`
 3. `ARCHITECTURE.md`
 4. `STATE.md`
+5. `AGENT_INTEGRATION.md`
 
 Then perform the task under **Next task**.
