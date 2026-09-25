@@ -91,18 +91,22 @@ Other projects should call the installed CLI instead of copying this repository 
 
 Each monitored project may keep its own configuration, dashboard, and local runtime database.
 
-## Phase 9: Remote and smartphone access
+## Phase 9: Remote and smartphone access ← implementation complete, deployment verification pending
 
-Only after the local workflow is useful, add safer remote access.
+Add reusable remote access for installed-CLI projects through Tailscale Serve.
 
-Possible later work includes:
+The first implementation:
 
-- access from another device on the same network
-- authenticated remote access
-- HTTPS
-- Slack, Discord, or Telegram notifications
+- keeps each backend bound to localhost
+- exposes HTTPS only inside the Tailscale tailnet
+- does not enable Funnel
+- automatically avoids existing Tailscale Serve ports
+- keeps remote runtime state project-local
+- starts, reports, and stops one project's endpoint without changing unrelated Serve entries
 
-These are intentionally excluded from the first version.
+Success condition: two different monitored projects can be opened from the iPhone through different tailnet URLs, and stopping one project leaves the other project and the established production endpoint untouched.
+
+Separate application-level authentication, public internet hosting, messaging integrations, and automatic agent resume remain outside this phase.
 
 ## Explicitly out of scope for the first MVP
 
