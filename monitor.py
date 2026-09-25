@@ -102,6 +102,17 @@ def connect_db() -> sqlite3.Connection:
         )
         """
     )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS metrics (
+            key TEXT PRIMARY KEY,
+            label TEXT NOT NULL,
+            value TEXT NOT NULL,
+            unit TEXT,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
     connection.commit()
     return connection
 
@@ -474,6 +485,100 @@ def get_artifact_record(artifact_id: int) -> dict[str, object] | None:
     return public
 
 
+METRIC_KEY_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+
+
+def _normalize_metric_key(key: str) -> str:
+    key = key.strip()
+    if not METRIC_KEY_PATTERN.fullmatch(key):
+        raise ValueError(
+            "Metric key must be 1-128 characters using letters, numbers, '.', '_' or '-'."
+        )
+    return key
+
+
+def set_metric(
+    key: str,
+    value: str,
+    *,
+    label: str | None = None,
+    unit: str | None = None,
+) -> dict[str, str | None]:
+    key = _normalize_metric_key(key)
+    value = value.strip()
+    if not value:
+        raise ValueError("Metric value must not be empty.")
+
+    with database_session() as connection:
+        existing = connection.execute(
+            "SELECT label, unit FROM metrics WHERE key = ?",
+            (key,),
+        ).fetchone()
+
+        if label is None:
+            resolved_label = existing[0] if existing is not None else key
+        else:
+            resolved_label = label.strip()
+            if not resolved_label:
+                raise ValueError("Metric label must not be empty.")
+
+        if unit is None:
+            resolved_unit = existing[1] if existing is not None else None
+        else:
+            resolved_unit = unit.strip() or None
+
+        updated_at = utc_now()
+        connection.execute(
+            """
+            INSERT INTO metrics (key, label, value, unit, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET
+                label = excluded.label,
+                value = excluded.value,
+                unit = excluded.unit,
+                updated_at = excluded.updated_at
+            """,
+            (key, resolved_label, value, resolved_unit, updated_at),
+        )
+
+    return {
+        "key": key,
+        "label": resolved_label,
+        "value": value,
+        "unit": resolved_unit,
+        "updated_at": updated_at,
+    }
+
+
+def list_metrics() -> list[dict[str, str | None]]:
+    with database_session() as connection:
+        rows = connection.execute(
+            """
+            SELECT key, label, value, unit, updated_at
+            FROM metrics
+            ORDER BY key COLLATE NOCASE ASC
+            """
+        ).fetchall()
+
+    return [
+        {
+            "key": row[0],
+            "label": row[1],
+            "value": row[2],
+            "unit": row[3],
+            "updated_at": row[4],
+        }
+        for row in rows
+    ]
+
+
+def delete_metric(key: str) -> bool:
+    key = _normalize_metric_key(key)
+    with database_session() as connection:
+        cursor = connection.execute("DELETE FROM metrics WHERE key = ?", (key,))
+        return cursor.rowcount > 0
+
+
 class DashboardHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         path = self.path.split("?", 1)[0]
@@ -506,6 +611,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
         if path == "/api/artifacts/latest":
             self._serve_json({"artifact": get_latest_artifact()})
+            return
+
+        if path == "/api/metrics":
+            self._serve_json({"metrics": list_metrics()})
             return
 
         artifact_match = re.fullmatch(r"/artifacts/(\d+)", path)
@@ -656,6 +765,24 @@ def parse_ask_args(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def parse_metric_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="monitor.py metric",
+        description="Set or delete a project-specific metric.",
+    )
+    subparsers = parser.add_subparsers(dest="action", required=True)
+
+    set_parser = subparsers.add_parser("set", help="Set or update a metric")
+    set_parser.add_argument("key", help="Stable metric key")
+    set_parser.add_argument("value", help="Metric value")
+    set_parser.add_argument("--label", help="Human-readable dashboard label")
+    set_parser.add_argument("--unit", help="Optional display unit")
+
+    delete_parser = subparsers.add_parser("delete", help="Delete a metric")
+    delete_parser.add_argument("key", help="Metric key")
+    return parser.parse_args(argv)
+
+
 def parse_artifact_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="monitor.py artifact",
@@ -724,6 +851,29 @@ def main() -> None:
             f"Artifact #{artifact['id']}: {artifact['display_name']} "
             f"({artifact['sha256']})"
         )
+        return
+
+    if len(sys.argv) > 1 and sys.argv[1] == "metric":
+        args = parse_metric_args(sys.argv[2:])
+        if args.action == "set":
+            metric = set_metric(
+                args.key,
+                args.value,
+                label=args.label,
+                unit=args.unit,
+            )
+            display_value = metric["value"]
+            if metric["unit"]:
+                display_value = f"{display_value} {metric['unit']}"
+            print(f"{metric['label']}: {display_value}")
+            return
+
+        deleted = delete_metric(args.key)
+        print("Metric deleted." if deleted else "Metric not found.")
+        return
+
+    if len(sys.argv) > 1 and sys.argv[1] == "metrics":
+        print(json.dumps({"metrics": list_metrics()}, ensure_ascii=False, indent=2))
         return
 
     args = parse_server_args(sys.argv[1:])
