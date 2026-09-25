@@ -9,9 +9,13 @@ import json
 import mimetypes
 import re
 import shutil
+import socket
 import sqlite3
 import subprocess
 import sys
+import time
+import urllib.error
+import urllib.request
 import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -34,6 +38,7 @@ monitor.db-shm
 monitor.db-wal
 monitor.db-journal
 artifacts/
+runtime/
 """
 
 
@@ -617,12 +622,397 @@ def delete_metric(key: str) -> bool:
         return cursor.rowcount > 0
 
 
+def project_info() -> dict[str, str]:
+    return {
+        "project_root": str(PROJECT_ROOT),
+        "data_dir": str(DATA_DIR),
+    }
+
+
+def remote_runtime_dir() -> Path:
+    return DATA_DIR / "runtime"
+
+
+def remote_state_path() -> Path:
+    return remote_runtime_dir() / "remote.json"
+
+
+def _port_is_free(host: str, port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        try:
+            sock.bind((host, port))
+        except OSError:
+            return False
+    return True
+
+
+def _tailscale_command(*args: str) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            ["tailscale", *args],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=True,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError("Tailscale CLI was not found.") from exc
+    except subprocess.CalledProcessError as exc:
+        message = (exc.stderr or exc.stdout or str(exc)).strip()
+        raise RuntimeError(f"Tailscale command failed: {message}") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("Tailscale command timed out.") from exc
+
+
+def _tailscale_status_json() -> dict[str, object]:
+    result = _tailscale_command("serve", "status", "--json")
+    try:
+        payload = json.loads(result.stdout or "{}")
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("Tailscale Serve returned invalid JSON.") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError("Tailscale Serve returned unexpected JSON.")
+    return payload
+
+
+def _tailscale_used_ports(status: dict[str, object]) -> set[int]:
+    ports: set[int] = set()
+
+    tcp = status.get("TCP")
+    if isinstance(tcp, dict):
+        for key in tcp:
+            try:
+                ports.add(int(str(key)))
+            except ValueError:
+                continue
+
+    web = status.get("Web")
+    if isinstance(web, dict):
+        for key in web:
+            match = re.search(r":(\d+)$", str(key))
+            if match:
+                ports.add(int(match.group(1)))
+
+    return ports
+
+
+def _find_free_backend_port() -> int:
+    for port in range(8765, 8800):
+        if _port_is_free(HOST, port):
+            return port
+    raise RuntimeError("No free backend port found in 8765-8799.")
+
+
+def _find_free_tailscale_port(status: dict[str, object]) -> int:
+    used = _tailscale_used_ports(status)
+    candidates = [*range(9443, 9500), *range(10443, 10500)]
+    for port in candidates:
+        if port in used:
+            continue
+        if _port_is_free("0.0.0.0", port):
+            return port
+    raise RuntimeError("No free Tailscale HTTPS port found in the configured ranges.")
+
+
+def _wait_for_project_server(url: str, expected_project_root: str) -> None:
+    endpoint = f"{url}/api/project"
+    last_error: Exception | None = None
+    for _ in range(30):
+        try:
+            with urllib.request.urlopen(endpoint, timeout=1) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+                if (
+                    response.status == 200
+                    and isinstance(payload, dict)
+                    and payload.get("project_root") == expected_project_root
+                ):
+                    return
+        except (
+            OSError,
+            urllib.error.URLError,
+            json.JSONDecodeError,
+        ) as exc:
+            last_error = exc
+        time.sleep(0.2)
+
+    raise RuntimeError(f"Monitor backend did not become ready: {last_error}")
+
+
+def _tailscale_dns_name() -> str:
+    result = _tailscale_command("status", "--json")
+    try:
+        payload = json.loads(result.stdout)
+        self_info = payload.get("Self", {})
+        dns_name = self_info.get("DNSName") if isinstance(self_info, dict) else None
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("Tailscale status returned invalid JSON.") from exc
+
+    if not isinstance(dns_name, str) or not dns_name.strip():
+        raise RuntimeError("Could not determine this machine's Tailscale DNS name.")
+    return dns_name.rstrip(".")
+
+
+def _serve_handler_proxy(status: dict[str, object], host_name: str, port: int) -> str | None:
+    web = status.get("Web")
+    if not isinstance(web, dict):
+        return None
+
+    entry = web.get(f"{host_name}:{port}")
+    if not isinstance(entry, dict):
+        return None
+
+    handlers = entry.get("Handlers")
+    if not isinstance(handlers, dict):
+        return None
+
+    root_handler = handlers.get("/")
+    if not isinstance(root_handler, dict):
+        return None
+
+    proxy = root_handler.get("Proxy")
+    return proxy if isinstance(proxy, str) else None
+
+
+def _process_is_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if sys.platform == "win32":
+        result = subprocess.run(
+            ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return str(pid) in result.stdout
+
+    try:
+        import os
+
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+def _stop_process(pid: int) -> None:
+    if pid <= 0:
+        return
+    if sys.platform == "win32":
+        subprocess.run(
+            ["taskkill", "/PID", str(pid), "/T", "/F"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return
+
+    import os
+    import signal
+
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+
+
+def read_remote_state() -> dict[str, object] | None:
+    path = remote_state_path()
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Remote state is invalid: {path}") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"Remote state is invalid: {path}")
+    return payload
+
+
+def _write_remote_state(state: dict[str, object]) -> None:
+    runtime = remote_runtime_dir()
+    runtime.mkdir(parents=True, exist_ok=True)
+    temporary = runtime / "remote.json.tmp"
+    temporary.write_text(
+        json.dumps(state, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    temporary.replace(remote_state_path())
+
+
+def remote_start() -> dict[str, object]:
+    existing = read_remote_state()
+    if existing is not None:
+        pid = existing.get("pid")
+        backend_url = existing.get("backend_url")
+        if isinstance(pid, int) and _process_is_alive(pid) and isinstance(backend_url, str):
+            try:
+                _wait_for_project_server(backend_url, str(PROJECT_ROOT))
+            except RuntimeError:
+                pass
+            else:
+                raise RuntimeError(
+                    f"Remote monitor is already running: {existing.get('tailnet_url', backend_url)}"
+                )
+
+    status = _tailscale_status_json()
+    backend_port = _find_free_backend_port()
+    https_port = _find_free_tailscale_port(status)
+    backend_url = f"http://{HOST}:{backend_port}"
+
+    runtime = remote_runtime_dir()
+    runtime.mkdir(parents=True, exist_ok=True)
+    stdout_path = runtime / "remote.stdout.log"
+    stderr_path = runtime / "remote.stderr.log"
+
+    stdout_file = stdout_path.open("ab")
+    stderr_file = stderr_path.open("ab")
+    process: subprocess.Popen[bytes] | None = None
+    try:
+        kwargs: dict[str, object] = {
+            "cwd": str(PROJECT_ROOT),
+            "stdin": subprocess.DEVNULL,
+            "stdout": stdout_file,
+            "stderr": stderr_file,
+        }
+        if sys.platform == "win32":
+            kwargs["creationflags"] = (
+                subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
+            )
+        else:
+            kwargs["start_new_session"] = True
+
+        process = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "ai_agent_monitor",
+                "serve",
+                "--port",
+                str(backend_port),
+            ],
+            **kwargs,
+        )
+
+        _wait_for_project_server(backend_url, str(PROJECT_ROOT))
+        _tailscale_command(
+            "serve",
+            "--bg",
+            "--yes",
+            f"--https={https_port}",
+            backend_url,
+        )
+        dns_name = _tailscale_dns_name()
+        tailnet_url = f"https://{dns_name}:{https_port}/"
+
+        state = {
+            "project_root": str(PROJECT_ROOT),
+            "backend_port": backend_port,
+            "https_port": https_port,
+            "pid": process.pid,
+            "backend_url": backend_url,
+            "tailnet_url": tailnet_url,
+            "started_at": utc_now(),
+        }
+        _write_remote_state(state)
+        return state
+    except Exception:
+        if process is not None and process.poll() is None:
+            _stop_process(process.pid)
+        raise
+    finally:
+        stdout_file.close()
+        stderr_file.close()
+
+
+def remote_status() -> dict[str, object]:
+    state = read_remote_state()
+    if state is None:
+        return {
+            "configured": False,
+            "backend_alive": False,
+            "tailscale_active": False,
+        }
+
+    backend_alive = False
+    backend_url = state.get("backend_url")
+    if isinstance(backend_url, str):
+        try:
+            _wait_for_project_server(backend_url, str(PROJECT_ROOT))
+        except RuntimeError:
+            backend_alive = False
+        else:
+            backend_alive = True
+
+    tailscale_active = False
+    https_port = state.get("https_port")
+    backend_url = state.get("backend_url")
+    if isinstance(https_port, int) and isinstance(backend_url, str):
+        try:
+            status = _tailscale_status_json()
+            host_name = _tailscale_dns_name()
+            tailscale_active = (
+                _serve_handler_proxy(status, host_name, https_port) == backend_url
+            )
+        except RuntimeError:
+            tailscale_active = False
+
+    return {
+        **state,
+        "configured": True,
+        "backend_alive": backend_alive,
+        "tailscale_active": tailscale_active,
+    }
+
+
+def remote_stop() -> dict[str, object]:
+    state = read_remote_state()
+    if state is None:
+        return {"stopped": False, "reason": "not configured"}
+
+    expected_root = state.get("project_root")
+    if expected_root != str(PROJECT_ROOT):
+        raise RuntimeError(
+            "Remote state belongs to a different project; refusing to stop it."
+        )
+
+    backend_url = state.get("backend_url")
+    https_port = state.get("https_port")
+    if not isinstance(backend_url, str) or not isinstance(https_port, int):
+        raise RuntimeError("Remote state is missing backend or HTTPS port information.")
+
+    status = _tailscale_status_json()
+    host_name = _tailscale_dns_name()
+    proxy = _serve_handler_proxy(status, host_name, https_port)
+    if proxy is not None and proxy != backend_url:
+        raise RuntimeError(
+            f"Tailscale Serve port {https_port} no longer points to this project; refusing to change it."
+        )
+
+    if proxy == backend_url:
+        _tailscale_command("serve", f"--https={https_port}", "off")
+
+    pid = state.get("pid")
+    if isinstance(pid, int) and _process_is_alive(pid):
+        _stop_process(pid)
+
+    remote_state_path().unlink(missing_ok=True)
+    return {
+        "stopped": True,
+        "backend_url": backend_url,
+        "https_port": https_port,
+    }
+
+
 class DashboardHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         path = self.path.split("?", 1)[0]
 
         if path in ("/", "/dashboard.html"):
             self._serve_dashboard()
+            return
+
+        if path == "/api/project":
+            self._serve_json(project_info())
             return
 
         if path == "/api/progress":
@@ -758,6 +1148,18 @@ class DashboardHandler(BaseHTTPRequestHandler):
         return
 
 
+def parse_remote_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="monitor remote",
+        description="Expose the current project to the Tailscale tailnet.",
+    )
+    subparsers = parser.add_subparsers(dest="action", required=True)
+    subparsers.add_parser("start", help="Start a tailnet-only HTTPS endpoint")
+    subparsers.add_parser("status", help="Show the current remote endpoint state")
+    subparsers.add_parser("stop", help="Stop this project's remote endpoint")
+    return parser.parse_args(argv)
+
+
 def parse_init_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="monitor init",
@@ -865,6 +1267,21 @@ def serve(port: int) -> None:
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "remote":
+        args = parse_remote_args(sys.argv[2:])
+        if args.action == "start":
+            state = remote_start()
+            print(f"Remote monitor: {state['tailnet_url']}")
+            print(f"Backend: {state['backend_url']}")
+            return
+        if args.action == "status":
+            print(json.dumps(remote_status(), ensure_ascii=False, indent=2))
+            return
+
+        result = remote_stop()
+        print("Remote monitor stopped." if result["stopped"] else "Remote monitor is not configured.")
+        return
+
     if len(sys.argv) > 1 and sys.argv[1] == "init":
         args = parse_init_args(sys.argv[2:])
         result = init_project(args.dashboard)
