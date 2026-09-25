@@ -203,3 +203,18 @@ Stopping is conservative:
 The health endpoint exposes only a short project identifier and project directory name, not the full local filesystem path.
 
 The older repository-specific Tailscale deployment scripts remain for backward compatibility with the original N100 deployment.
+
+
+## Windows logon persistence
+
+Phase 10 uses Windows Task Scheduler for optional per-project startup.
+
+`monitor startup install` writes a small PowerShell launcher under the project's ignored `.agent-monitor/runtime/` directory and registers an `ONLOGON` scheduled task. The task name contains the project's hashed project ID, which keeps projects independent.
+
+The launcher uses the Python executable from the installed `ai-agent-monitor` tool environment rather than depending on the user's PATH. It changes to the saved project root before running the package.
+
+At logon, the launcher first asks `monitor remote status` whether both the backend and Tailscale Serve mapping are already healthy. Otherwise it retries `remote start` up to 12 times with a five-second delay, allowing time for Tailscale to initialize.
+
+Removal is conservative: the local startup state must belong to the current project and the saved task name must match the task name derived from the current project ID before deletion is attempted.
+
+This is user-logon persistence, not a pre-login Windows service.
