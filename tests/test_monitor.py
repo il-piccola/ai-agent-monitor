@@ -1,3 +1,4 @@
+import hashlib
 import sqlite3
 import tempfile
 import unittest
@@ -12,6 +13,7 @@ class MonitorStorageTestCase(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
         root = Path(self.temp_dir.name)
+        self.root = root
         self.data_dir_patch = patch.object(monitor, "DATA_DIR", root / ".agent-monitor")
         self.db_path_patch = patch.object(
             monitor, "DB_PATH", root / ".agent-monitor" / "monitor.db"
@@ -159,6 +161,62 @@ class AnswerStorageTests(MonitorStorageTestCase):
 
         answered = monitor.answer_question(1, "Migrated answer")
         self.assertEqual(answered["answer"], "Migrated answer")
+
+
+class ArtifactStorageTests(MonitorStorageTestCase):
+    def test_artifact_snapshot_is_immutable_and_hashed(self) -> None:
+        source = self.root / "report.txt"
+        source.write_text("original report", encoding="utf-8")
+
+        artifact = monitor.register_artifact(
+            source,
+            "  Benchmark report  ",
+            allowed_root=self.root,
+        )
+        record = monitor.get_artifact_record(artifact["id"])
+        self.assertIsNotNone(record)
+
+        snapshot = monitor.artifact_dir() / record["storage_name"]
+        self.assertEqual(snapshot.read_text(encoding="utf-8"), "original report")
+        self.assertEqual(artifact["display_name"], "Benchmark report")
+        self.assertEqual(artifact["original_name"], "report.txt")
+        self.assertEqual(artifact["size_bytes"], len(b"original report"))
+        self.assertEqual(
+            artifact["sha256"],
+            hashlib.sha256(b"original report").hexdigest(),
+        )
+        self.assertEqual(artifact["url"], f"/artifacts/{artifact['id']}")
+
+        source.write_text("changed later", encoding="utf-8")
+        self.assertEqual(snapshot.read_text(encoding="utf-8"), "original report")
+
+    def test_latest_artifact_is_newest(self) -> None:
+        first_path = self.root / "first.txt"
+        second_path = self.root / "second.txt"
+        first_path.write_text("first", encoding="utf-8")
+        second_path.write_text("second", encoding="utf-8")
+
+        monitor.register_artifact(first_path, allowed_root=self.root)
+        second = monitor.register_artifact(second_path, allowed_root=self.root)
+
+        self.assertEqual(monitor.get_latest_artifact(), second)
+
+    def test_artifact_outside_allowed_root_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as other_dir:
+            outside = Path(other_dir) / "secret.txt"
+            outside.write_text("secret", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                monitor.register_artifact(outside, allowed_root=self.root)
+
+    def test_artifact_directory_is_rejected(self) -> None:
+        directory = self.root / "folder"
+        directory.mkdir()
+        with self.assertRaises(ValueError):
+            monitor.register_artifact(directory, allowed_root=self.root)
+
+    def test_missing_artifact_record_returns_none(self) -> None:
+        self.assertIsNone(monitor.get_artifact_record(999))
+        self.assertIsNone(monitor.get_latest_artifact())
 
 
 if __name__ == "__main__":
