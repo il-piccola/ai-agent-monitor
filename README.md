@@ -410,7 +410,7 @@ The existing repository deployment helpers remain available for the original N10
 
 ## Windows logon startup
 
-Phase 10 adds optional Windows Task Scheduler integration for project remotes.
+Phase 10 adds optional per-user Windows logon startup for project remotes without requiring administrator rights.
 
 From the project directory:
 
@@ -418,22 +418,24 @@ From the project directory:
 monitor startup install
 ```
 
-This creates a project-specific Task Scheduler entry that runs at Windows user logon. The task uses the installed Python environment directly, changes to the project directory, and starts that project's `monitor remote start`.
+The command writes a project-specific `.cmd` launcher into the current Windows user's Startup folder. The launcher calls the project's PowerShell startup script from `.agent-monitor/runtime/`, uses the installed Python environment directly, changes to the project directory, and starts that project's `monitor remote start`.
 
-Check the task:
+Check it with:
 
 ```powershell
 monitor startup status
 ```
 
-Remove it:
+Remove it with:
 
 ```powershell
 monitor startup remove
 ```
 
-Each task name includes the project's hashed project ID, so different monitored projects use different Task Scheduler entries.
+Each launcher filename includes the project's hashed project ID, so different monitored projects use different Startup-folder entries.
 
 The startup script first checks whether the project's remote endpoint is already healthy. If not, it retries startup for up to roughly one minute so a slightly delayed Tailscale service does not immediately cause a permanent failure.
 
-This is a Windows **logon** trigger, not a Windows service that starts before user logon. If the N100 boots but no user logs in, this task does not run.
+The initial Task Scheduler approach was dropped after the N100 verification showed that the normal `LETO\ilpic` session could not register scheduled tasks. The Startup-folder implementation is intentionally per-user and does not require switching to another administrator account.
+
+This runs after the Windows user logs in. It is not a pre-login Windows service.
