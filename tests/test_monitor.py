@@ -588,16 +588,20 @@ class RemoteProjectSecurityTests(MonitorStorageTestCase):
 
 
 class WindowsStartupTests(MonitorStorageTestCase):
-    def test_startup_task_name_is_project_specific(self) -> None:
+    def setUp(self) -> None:
+        super().setUp()
+        self.startup_dir = self.root / "Startup"
+
+    def test_startup_launcher_name_is_project_specific(self) -> None:
         with patch.object(monitor, "PROJECT_ROOT", self.root):
-            first = monitor.startup_task_name()
+            first = monitor.startup_launcher_name()
 
         other = self.root / "other"
         with patch.object(monitor, "PROJECT_ROOT", other):
-            second = monitor.startup_task_name()
+            second = monitor.startup_launcher_name()
 
         self.assertNotEqual(first, second)
-        self.assertTrue(first.startswith("AI Agent Monitor "))
+        self.assertTrue(first.endswith(".cmd"))
 
     def test_powershell_single_quote_escapes_project_paths(self) -> None:
         self.assertEqual(
@@ -605,88 +609,77 @@ class WindowsStartupTests(MonitorStorageTestCase):
             "C:/Users/O''Brien/project",
         )
 
-    def test_startup_install_creates_onlogon_task_and_state(self) -> None:
-        calls = []
-
-        def fake_schtasks(*args: str, check: bool = True):
-            calls.append((args, check))
-            return subprocess.CompletedProcess(["schtasks"], 0, "", "")
-
+    def test_startup_install_creates_launcher_and_state(self) -> None:
         with (
             patch.object(monitor.sys, "platform", "win32"),
-            patch.object(monitor, "_schtasks_command", side_effect=fake_schtasks),
+            patch.object(monitor, "windows_startup_dir", return_value=self.startup_dir),
         ):
             state = monitor.startup_install()
 
+        launcher_path = Path(state["launcher_path"])
         script_path = monitor.startup_script_path()
-        self.assertTrue(script_path.is_file())
-        script = script_path.read_text(encoding="utf-8")
-        self.assertIn("-m ai_agent_monitor remote start", script)
-        self.assertIn("-m ai_agent_monitor remote status", script)
-        self.assertIn("Start-Sleep -Seconds 5", script)
-        self.assertIn("$attempt -lt 12", script)
-        self.assertIn(str(monitor.PROJECT_ROOT), script)
 
-        create_args = calls[0][0]
-        self.assertIn("/Create", create_args)
-        self.assertIn("ONLOGON", create_args)
-        self.assertIn(monitor.startup_task_name(), create_args)
-        self.assertEqual(state["task_name"], monitor.startup_task_name())
+        self.assertTrue(launcher_path.is_file())
+        self.assertTrue(script_path.is_file())
+        self.assertEqual(state["mode"], "startup-folder")
+        self.assertIn("-m ai_agent_monitor remote start", script_path.read_text(encoding="utf-8"))
+        self.assertIn("powershell.exe", launcher_path.read_text(encoding="utf-8"))
         self.assertEqual(monitor.read_startup_state(), state)
 
-    def test_startup_status_reports_missing_task(self) -> None:
-        result = subprocess.CompletedProcess(["schtasks"], 1, "", "not found")
-
+    def test_startup_status_reports_missing_launcher(self) -> None:
         with (
             patch.object(monitor.sys, "platform", "win32"),
-            patch.object(monitor, "_schtasks_command", return_value=result),
+            patch.object(monitor, "windows_startup_dir", return_value=self.startup_dir),
         ):
             status = monitor.startup_status()
 
         self.assertFalse(status["installed"])
-        self.assertEqual(status["task_name"], monitor.startup_task_name())
 
     def test_startup_remove_refuses_state_from_other_project(self) -> None:
         monitor._write_startup_state(
             {
                 "project_root": "C:/different-project",
                 "project_id": "different",
-                "task_name": monitor.startup_task_name(),
+                "mode": "startup-folder",
+                "launcher_path": "C:/different-launcher.cmd",
             }
         )
 
-        with patch.object(monitor.sys, "platform", "win32"):
+        with (
+            patch.object(monitor.sys, "platform", "win32"),
+            patch.object(monitor, "windows_startup_dir", return_value=self.startup_dir),
+        ):
             with self.assertRaises(RuntimeError):
                 monitor.startup_remove()
 
-    def test_startup_remove_deletes_only_expected_task(self) -> None:
-        task_name = monitor.startup_task_name()
-        monitor.remote_runtime_dir().mkdir(parents=True, exist_ok=True)
-        monitor.startup_script_path().write_text("test", encoding="utf-8")
+    def test_startup_remove_refuses_mismatched_launcher(self) -> None:
         monitor._write_startup_state(
             {
                 "project_root": str(monitor.PROJECT_ROOT),
                 "project_id": monitor.project_id(),
-                "task_name": task_name,
+                "mode": "startup-folder",
+                "launcher_path": "C:/different-launcher.cmd",
             }
         )
 
-        calls = []
-
-        def fake_schtasks(*args: str, check: bool = True):
-            calls.append((args, check))
-            return subprocess.CompletedProcess(["schtasks"], 0, "", "")
-
         with (
             patch.object(monitor.sys, "platform", "win32"),
-            patch.object(monitor, "_schtasks_command", side_effect=fake_schtasks),
+            patch.object(monitor, "windows_startup_dir", return_value=self.startup_dir),
         ):
+            with self.assertRaises(RuntimeError):
+                monitor.startup_remove()
+
+    def test_startup_remove_deletes_only_expected_launcher(self) -> None:
+        with (
+            patch.object(monitor.sys, "platform", "win32"),
+            patch.object(monitor, "windows_startup_dir", return_value=self.startup_dir),
+        ):
+            state = monitor.startup_install()
+            launcher_path = Path(state["launcher_path"])
             result = monitor.startup_remove()
 
         self.assertTrue(result["removed"])
-        self.assertEqual(calls[0][0][0], "/Query")
-        self.assertEqual(calls[1][0][0], "/Delete")
-        self.assertIn(task_name, calls[1][0])
+        self.assertFalse(launcher_path.exists())
         self.assertFalse(monitor.startup_state_path().exists())
         self.assertFalse(monitor.startup_script_path().exists())
 
