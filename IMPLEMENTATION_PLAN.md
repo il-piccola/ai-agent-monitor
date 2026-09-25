@@ -129,6 +129,98 @@ The earlier Task Scheduler version was rejected after N100 verification returned
 
 Success condition: after installing startup for a test project and signing out/restarting into the same user session, the project's Tailscale endpoint returns without manually running `monitor remote start`, while unrelated Tailscale Serve entries remain unchanged.
 
+## Phase 11: Agent integration contract and machine-readable status
+
+Define the smallest stable interface that a CLI-capable agent needs in order to use the monitor without understanding its implementation.
+
+Implement:
+
+- `monitor status` with machine-readable JSON output
+- a schema version in the status payload
+- current task
+- recent progress
+- unanswered questions with IDs
+- recent answered questions
+- latest artifact metadata
+- project metrics
+- project identity without exposing local filesystem paths
+- an `AGENT_INTEGRATION.md` document that defines when an agent should call each monitor command
+- tests for the status schema and for existing projects with empty or partial state
+
+The contract must remain agent-neutral. Codex is the first consumer, not a dependency of the monitor.
+
+Do not add automatic resume in this phase.
+
+Success condition: an agent can learn the current monitored state using one command and can determine which existing CLI action to take next without reading SQLite, HTML, or the monitor source code.
+
+## Phase 12: Project onboarding for Codex and other agents
+
+Make the integration easy to add to an existing project without copying this repository.
+
+Implement:
+
+- a command that emits or installs short agent instructions for the current project
+- Codex instructions designed for a repository-level `AGENTS.md`
+- a generic Markdown instruction variant for other CLI-capable agents
+- safe handling of an existing `AGENTS.md`: do not overwrite unrelated project instructions
+- an idempotent install/update path
+- an uninstall or removal path for monitor-owned instruction content
+- documentation showing manual integration for agents that use a different instruction-file mechanism
+
+Keep the injected instructions short. They should point the agent to the monitor contract rather than duplicate the entire monitor manual.
+
+Success condition: a fresh project can be prepared for Codex with a small number of commands, Codex receives persistent monitor instructions, and removing the integration does not damage unrelated project instructions.
+
+## Phase 13: Real agent workflow verification and v1.0 gate
+
+Verify the monitor in a real development project rather than adding more infrastructure.
+
+Run at least one substantial Codex task where the human does not manually issue monitor commands on the agent's behalf.
+
+Verify this sequence:
+
+1. the agent reads the integration instructions
+2. the agent reads `monitor status`
+3. the agent records the active task
+4. the agent records meaningful progress checkpoints
+5. the agent records a human question when a decision is actually required
+6. the human answers from the iPhone dashboard
+7. a later agent turn/run reads the stored answer
+8. the agent registers a reviewable artifact when appropriate
+9. the agent updates project-specific metrics when the project defines them
+10. the agent marks the task complete
+11. the monitor does not receive noisy progress events for trivial internal steps
+
+Repeat the same contract with one non-Codex CLI-capable agent if a suitable agent is available. This second-agent check is a portability test, not a requirement to add vendor-specific code.
+
+Success condition: the complete human/agent loop works in a real project with no manual database edits and no need for the human to translate normal agent activity into monitor commands.
+
+If the success condition is met and no blocking defects remain, release `1.0.0`.
+
+## Phase 14: Notifications
+
+Optional post-v1 work.
+
+Add outbound notification adapters only after the dashboard workflow is proven in real use. Candidate adapters include Slack, Discord, and Telegram.
+
+The monitor database remains the source of truth. A notification is a delivery mechanism, not a second question/answer store.
+
+## Phase 15: Runner-specific automatic resume
+
+Optional post-v1 work.
+
+Add automatic continuation only through explicit runner adapters. Do not put Codex-specific resume logic into the core monitor.
+
+The first implementation must define what event resumes a run, how duplicate resumes are prevented, and what happens when an answer arrives after the original run is no longer resumable.
+
+## Phase 16: Automatic telemetry
+
+Optional post-v1 work.
+
+Add collectors for values that can be measured reliably, such as tool failures, elapsed time, or provider-reported cost.
+
+Do not infer cost or quality from incomplete data. Project-defined manual metrics remain supported.
+
 ## Explicitly out of scope for the first MVP
 
 Do not add these before the local progress workflow works:
