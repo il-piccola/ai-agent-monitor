@@ -6,7 +6,7 @@
 - Visibility: public
 - Default branch: `main`
 - Completed phases: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12
-- Current phase: 12 complete; Phase 13 real-agent verification is next
+- Current phase: 13 real-agent verification in progress
 
 ## Verified deployment
 
@@ -54,9 +54,30 @@ The standard-library test suite now contains 70 tests.
 
 Phase 12 is verified. Phase 13 has not started.
 
+## Phase 13 verification
+
+`PHASE13_VERIFICATION.md` defines the real-agent test protocol.
+
+Phase 13 does not add monitor features before testing. It uses another real Codex project and verifies two workflows:
+
+- Scenario A: a normal task that should finish without asking the human
+- Scenario B: a real decision point, answered from the iPhone, then continued from a fresh Codex run
+
 ## Next task
 
-Phase 13 real-agent workflow verification. Use a separate real Codex project only when beginning that phase; this Phase 12 task did not install onboarding into a real project.
+On the N100, choose one existing Codex development project other than `ai-agent-monitor` that is safe to modify and has real work available.
+
+From that project's repository root:
+
+1. confirm the project is in a known Git state
+2. run `monitor agent install codex`
+3. inspect the generated `AGENTS.md` block, `.agents/skills/ai-agent-monitor/SKILL.md`, and `AI_AGENT_MONITOR.md`
+4. run `monitor status`
+5. choose one real, clearly specified task that should not require a human decision
+6. start a fresh Codex run and give only the normal project task, without mentioning monitor commands
+7. after Codex finishes, inspect `monitor status` and compare the behavior with Scenario A in `PHASE13_VERIFICATION.md`
+
+Do not run Scenario B until Scenario A has been reviewed.
 
 ## Not implemented yet
 
