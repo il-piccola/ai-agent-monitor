@@ -909,7 +909,7 @@ def _refresh_notification_status(
 ) -> None:
     rows = connection.execute(
         """
-        SELECT status, attempt_count, last_attempt_at, delivered_at, last_error
+        SELECT channel, status, attempt_count, last_attempt_at, delivered_at, last_error
         FROM notification_deliveries
         WHERE notification_id = ?
         """,
@@ -918,11 +918,11 @@ def _refresh_notification_status(
     if not rows:
         return
 
-    statuses = {row[0] for row in rows}
-    attempt_count = sum(int(row[1]) for row in rows)
-    last_attempts = [row[2] for row in rows if row[2]]
-    delivered_times = [row[3] for row in rows if row[3]]
-    errors = [f"{row[0]}: {row[4]}" for row in rows if row[4]]
+    statuses = {row[1] for row in rows}
+    attempt_count = sum(int(row[2]) for row in rows)
+    last_attempts = [row[3] for row in rows if row[3]]
+    delivered_times = [row[4] for row in rows if row[4]]
+    errors = [f"{row[0]}: {row[5]}" for row in rows if row[5]]
 
     if "pending" in statuses:
         status = "pending"
