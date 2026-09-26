@@ -1124,6 +1124,16 @@ class NotificationOutboxTests(MonitorStorageTestCase):
         self.assertEqual(delivered[0]["entity_id"], question["id"])
         self.assertIsNone(delivered[0]["cancelled_at"])
 
+    def test_question_without_enabled_channels_remains_usable(self) -> None:
+        monitor.set_notification_channel_enabled("telegram", False)
+
+        question = monitor.ask_question("No notifier configured")
+
+        self.assertEqual(monitor.list_open_questions()[0]["id"], question["id"])
+        self.assertEqual(monitor.list_notification_deliveries(), [])
+        event = monitor.list_notification_outbox()[0]
+        self.assertEqual(event["status"], "cancelled")
+
     def test_email_is_optional_and_off_by_default(self) -> None:
         monitor.configure_email(
             to_address="to@example.com",
