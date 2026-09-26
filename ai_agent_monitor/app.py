@@ -2393,6 +2393,25 @@ def parse_ask_args(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def parse_notifications_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="monitor notifications",
+        description="List durable notification outbox events.",
+    )
+    parser.add_argument(
+        "--status",
+        choices=("pending", "delivered"),
+        help="Filter notification events by delivery status.",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=50,
+        help="Maximum number of events to return (default: 50).",
+    )
+    return parser.parse_args(argv)
+
+
 def parse_metric_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="monitor metric",
@@ -2546,6 +2565,17 @@ def main() -> None:
 
     if len(sys.argv) > 1 and sys.argv[1] == "answers":
         print(json.dumps({"answers": list_answered_questions()}, ensure_ascii=False, indent=2))
+        return
+
+    if len(sys.argv) > 1 and sys.argv[1] == "notifications":
+        args = parse_notifications_args(sys.argv[2:])
+        print(
+            json.dumps(
+                {"notifications": list_notification_outbox(status=args.status, limit=args.limit)},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
         return
 
     if len(sys.argv) > 1 and sys.argv[1] == "artifact":
