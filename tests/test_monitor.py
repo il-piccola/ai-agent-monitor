@@ -1134,6 +1134,189 @@ class NotificationOutboxTests(MonitorStorageTestCase):
         event = monitor.list_notification_outbox()[0]
         self.assertEqual(event["status"], "cancelled")
 
+    def test_email_supports_multiple_arbitrary_recipients(self) -> None:
+        monitor.configure_email(
+            to_addresses=["first@example.com", "second@example.net"],
+            from_address="sender@example.org",
+            smtp_host="smtp.example.com",
+            smtp_port=587,
+            username=None,
+            security="starttls",
+        )
+
+        self.assertEqual(
+            monitor.email_recipients(),
+            ["first@example.com", "second@example.net"],
+        )
+
+    def test_email_recipient_add_remove_and_deduplicate(self) -> None:
+        monitor.configure_email(
+            to_address="first@example.com",
+            from_address="sender@example.org",
+            smtp_host="smtp.example.com",
+            smtp_port=587,
+            username=None,
+            security="starttls",
+        )
+
+        added = monitor.add_email_recipients(
+            ["SECOND@example.net", "first@example.com"]
+        )
+        self.assertEqual(added, ["first@example.com", "SECOND@example.net"])
+
+        remaining = monitor.remove_email_recipients(["second@example.net"])
+        self.assertEqual(remaining, ["first@example.com"])
+
+    def test_legacy_single_to_config_migrates_to_recipients(self) -> None:
+        monitor.DATA_DIR.mkdir(parents=True, exist_ok=True)
+        monitor.notification_config_path().write_text(
+            json.dumps(
+                {
+                    "telegram": {"enabled": False, "chat_id": None},
+                    "email": {
+                        "enabled": False,
+                        "to": "legacy@example.com",
+                        "from_address": "sender@example.com",
+                        "smtp_host": "smtp.example.com",
+                        "smtp_port": 587,
+                        "username": None,
+                        "security": "starttls",
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        config = monitor.read_notification_config()
+
+        self.assertEqual(config["email"]["recipients"], ["legacy@example.com"])
+        self.assertNotIn("to", config["email"])
+
+    def test_multiple_email_recipients_have_independent_delivery_state(self) -> None:
+        monitor.set_notification_channel_enabled("telegram", False)
+        monitor.configure_email(
+            to_addresses=["first@example.com", "second@example.net"],
+            from_address="sender@example.org",
+            smtp_host="smtp.example.com",
+            smtp_port=587,
+            username=None,
+            security="starttls",
+        )
+        monitor.set_notification_channel_enabled("email", True)
+        monitor.ask_question("Notify both")
+
+        deliveries = monitor.list_notification_deliveries()
+        self.assertEqual(
+            [(item["channel"], item["target"]) for item in deliveries],
+            [
+                ("email", "first@example.com"),
+                ("email", "second@example.net"),
+            ],
+        )
+
+        def first_attempt(payload, recipient):
+            if recipient == "second@example.net":
+                raise RuntimeError("second recipient unavailable")
+
+        with patch.object(
+            monitor,
+            "_send_email_notification",
+            side_effect=first_attempt,
+        ) as sender:
+            first = monitor.dispatch_pending_notifications(force=True)
+
+        self.assertEqual(first, {"attempted": 2, "delivered": 1, "failed": 1})
+        self.assertEqual(sender.call_count, 2)
+
+        pending = monitor.list_notification_deliveries(status="pending")
+        self.assertEqual(len(pending), 1)
+        self.assertEqual(pending[0]["target"], "second@example.net")
+
+        with patch.object(monitor, "_send_email_notification") as retry:
+            second = monitor.dispatch_pending_notifications(force=True)
+
+        self.assertEqual(second, {"attempted": 1, "delivered": 1, "failed": 0})
+        retry.assert_called_once()
+        self.assertEqual(
+            retry.call_args.args[1],
+            "second@example.net",
+        )
+
+    def test_removing_recipient_cancels_only_that_pending_delivery(self) -> None:
+        monitor.set_notification_channel_enabled("telegram", False)
+        monitor.configure_email(
+            to_addresses=["first@example.com", "second@example.net"],
+            from_address="sender@example.org",
+            smtp_host="smtp.example.com",
+            smtp_port=587,
+            username=None,
+            security="starttls",
+        )
+        monitor.set_notification_channel_enabled("email", True)
+        monitor.ask_question("Remove one")
+
+        monitor.remove_email_recipients(["second@example.net"])
+
+        deliveries = {
+            item["target"]: item["status"]
+            for item in monitor.list_notification_deliveries()
+        }
+        self.assertEqual(deliveries["first@example.com"], "pending")
+        self.assertEqual(deliveries["second@example.net"], "cancelled")
+        self.assertTrue(monitor.read_notification_config()["email"]["enabled"])
+
+    def test_email_transport_sends_one_message_per_target_without_address_leak(self) -> None:
+        monitor.configure_email(
+            to_addresses=["first@example.com", "second@example.net"],
+            from_address="sender@example.org",
+            smtp_host="smtp.example.com",
+            smtp_port=587,
+            username=None,
+            security="starttls",
+        )
+        monitor.set_notification_channel_enabled("email", True)
+        client = MagicMock()
+        smtp = MagicMock()
+        smtp.return_value.__enter__.return_value = client
+        payload = {
+            "project": {"project_id": "abc", "name": "demo"},
+            "question_id": 9,
+            "question": "Multiple recipients?",
+        }
+
+        with patch.object(monitor.smtplib, "SMTP", smtp):
+            monitor._send_email_notification(payload, "second@example.net")
+
+        message = client.send_message.call_args.args[0]
+        self.assertEqual(message["To"], "second@example.net")
+        self.assertNotIn("first@example.com", str(message))
+
+    def test_notify_parser_accepts_repeated_to_and_recipient_commands(self) -> None:
+        parsed = monitor.parse_notify_args(
+            [
+                "email",
+                "set",
+                "--to",
+                "first@example.com",
+                "--to",
+                "second@example.net",
+                "--from-address",
+                "sender@example.org",
+                "--smtp-host",
+                "smtp.example.com",
+            ]
+        )
+        self.assertEqual(
+            parsed.to_addresses,
+            ["first@example.com", "second@example.net"],
+        )
+
+        add = monitor.parse_notify_args(
+            ["email", "recipient", "add", "third@example.com"]
+        )
+        self.assertEqual(add.recipient_action, "add")
+        self.assertEqual(add.addresses, ["third@example.com"])
+
     def test_email_is_optional_and_off_by_default(self) -> None:
         monitor.configure_email(
             to_address="to@example.com",
