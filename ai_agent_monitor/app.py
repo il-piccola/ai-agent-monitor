@@ -495,6 +495,203 @@ def complete_task() -> bool:
         return cursor.rowcount > 0
 
 
+TELEGRAM_TOKEN_ENV = "AI_AGENT_MONITOR_TELEGRAM_BOT_TOKEN"
+SMTP_PASSWORD_ENV = "AI_AGENT_MONITOR_SMTP_PASSWORD"
+NOTIFICATION_POLL_SECONDS = 5.0
+
+
+def notification_config_path() -> Path:
+    return DATA_DIR / "notifications.json"
+
+
+def default_notification_config() -> dict[str, object]:
+    return {
+        "telegram": {
+            "enabled": False,
+            "chat_id": None,
+        },
+        "email": {
+            "enabled": False,
+            "to": None,
+            "from_address": None,
+            "smtp_host": None,
+            "smtp_port": 587,
+            "username": None,
+            "security": "starttls",
+        },
+    }
+
+
+def read_notification_config() -> dict[str, object]:
+    config = default_notification_config()
+    path = notification_config_path()
+    if not path.is_file():
+        return config
+
+    try:
+        stored = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Notification config is invalid: {path}") from exc
+    if not isinstance(stored, dict):
+        raise RuntimeError(f"Notification config is invalid: {path}")
+
+    for channel in ("telegram", "email"):
+        value = stored.get(channel)
+        if isinstance(value, dict):
+            config[channel].update(value)
+    return config
+
+
+def write_notification_config(config: dict[str, object]) -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    path = notification_config_path()
+    temporary = path.with_suffix(".json.tmp")
+    temporary.write_text(
+        json.dumps(config, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    temporary.replace(path)
+
+
+def configure_telegram(chat_id: str) -> dict[str, object]:
+    chat_id = chat_id.strip()
+    if not chat_id:
+        raise ValueError("Telegram chat ID must not be empty.")
+    config = read_notification_config()
+    telegram = config["telegram"]
+    telegram["chat_id"] = chat_id
+    write_notification_config(config)
+    return telegram
+
+
+def configure_email(
+    *,
+    to_address: str,
+    from_address: str,
+    smtp_host: str,
+    smtp_port: int,
+    username: str | None,
+    security: str,
+) -> dict[str, object]:
+    to_address = to_address.strip()
+    from_address = from_address.strip()
+    smtp_host = smtp_host.strip()
+    username = username.strip() if username else None
+    if not to_address or not from_address or not smtp_host:
+        raise ValueError("Email recipient, sender and SMTP host are required.")
+    if smtp_port < 1 or smtp_port > 65535:
+        raise ValueError("SMTP port must be between 1 and 65535.")
+    if security not in {"starttls", "ssl", "none"}:
+        raise ValueError("Email security must be starttls, ssl or none.")
+
+    config = read_notification_config()
+    email = config["email"]
+    email.update(
+        {
+            "to": to_address,
+            "from_address": from_address,
+            "smtp_host": smtp_host,
+            "smtp_port": smtp_port,
+            "username": username,
+            "security": security,
+        }
+    )
+    write_notification_config(config)
+    return email
+
+
+def set_notification_channel_enabled(channel: str, enabled: bool) -> dict[str, object]:
+    if channel not in {"telegram", "email"}:
+        raise ValueError("Notification channel must be telegram or email.")
+
+    config = read_notification_config()
+    settings = config[channel]
+    if enabled:
+        if channel == "telegram":
+            if not settings.get("chat_id"):
+                raise RuntimeError("Configure a Telegram chat ID before enabling Telegram.")
+            if not os.environ.get(TELEGRAM_TOKEN_ENV):
+                raise RuntimeError(
+                    f"Set {TELEGRAM_TOKEN_ENV} before enabling Telegram."
+                )
+        else:
+            required = ("to", "from_address", "smtp_host", "smtp_port")
+            if any(not settings.get(key) for key in required):
+                raise RuntimeError("Configure email SMTP settings before enabling email.")
+            if settings.get("username") and not os.environ.get(SMTP_PASSWORD_ENV):
+                raise RuntimeError(
+                    f"Set {SMTP_PASSWORD_ENV} before enabling authenticated email."
+                )
+
+    settings["enabled"] = enabled
+    write_notification_config(config)
+    return settings
+
+
+def notification_config_public() -> dict[str, object]:
+    config = read_notification_config()
+    return {
+        "telegram": {
+            **config["telegram"],
+            "token_env": TELEGRAM_TOKEN_ENV,
+            "token_available": bool(os.environ.get(TELEGRAM_TOKEN_ENV)),
+        },
+        "email": {
+            **config["email"],
+            "password_env": SMTP_PASSWORD_ENV,
+            "password_available": bool(os.environ.get(SMTP_PASSWORD_ENV)),
+        },
+    }
+
+
+def discover_telegram_chat_id() -> str:
+    token = os.environ.get(TELEGRAM_TOKEN_ENV)
+    if not token:
+        raise RuntimeError(f"{TELEGRAM_TOKEN_ENV} is not set.")
+
+    url = f"https://api.telegram.org/bot{token}/getUpdates"
+    try:
+        with urllib.request.urlopen(url, timeout=10) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (OSError, urllib.error.URLError, json.JSONDecodeError) as exc:
+        raise RuntimeError("Telegram getUpdates failed.") from exc
+
+    if not isinstance(payload, dict) or payload.get("ok") is not True:
+        description = payload.get("description") if isinstance(payload, dict) else None
+        raise RuntimeError(f"Telegram getUpdates failed: {description or 'unknown error'}")
+
+    results = payload.get("result")
+    if not isinstance(results, list):
+        raise RuntimeError("Telegram getUpdates returned unexpected data.")
+
+    for update in reversed(results):
+        if not isinstance(update, dict):
+            continue
+        message = update.get("message")
+        if not isinstance(message, dict):
+            continue
+        chat = message.get("chat")
+        if not isinstance(chat, dict):
+            continue
+        chat_id = chat.get("id")
+        if isinstance(chat_id, int):
+            return str(chat_id)
+
+    raise RuntimeError(
+        "No Telegram chat was found. Send /start to the bot, then run discovery again."
+    )
+
+
+def enabled_notification_channels() -> list[str]:
+    config = read_notification_config()
+    channels: list[str] = []
+    for channel in ("telegram", "email"):
+        settings = config[channel]
+        if settings.get("enabled") is True:
+            channels.append(channel)
+    return channels
+
+
 def _enqueue_notification_event(
     connection: sqlite3.Connection,
     *,
