@@ -252,11 +252,13 @@ Do not add broad automatic repair in the first implementation. Diagnosis and rep
 
 Success condition: healthy state is reported clearly, and deliberately introduced DB/runtime/remote inconsistencies are identified without destructive changes.
 
-## Phase 15: Durable notifications
+## Phase 15: Durable notifications ← in progress
 
 Notify the human when attention is required without making an external messaging service the source of truth.
 
-Add a durable notification outbox with enough state to distinguish creation, delivery, retry, and failure. Notification events should reference the monitor entity that caused them, such as a question ID.
+Add a durable notification outbox with enough state to distinguish creation, delivery, retry, cancellation, and failure. Notification events reference the monitor entity that caused them, such as a question ID.
+
+Question creation and outbox creation must be one SQLite transaction. A pending question notification is cancelled if the question is answered before delivery, so delayed delivery does not notify the human about an already-resolved question.
 
 Implement one notification adapter first. Add additional adapters only after the event/outbox boundary is proven.
 
