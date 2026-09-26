@@ -2326,6 +2326,32 @@ DOCTOR_REQUIRED_SCHEMA = {
         "created_at",
     },
     "metrics": {"key", "label", "value", "unit", "updated_at"},
+    "notification_outbox": {
+        "id",
+        "event_type",
+        "entity_type",
+        "entity_id",
+        "payload_json",
+        "status",
+        "attempt_count",
+        "created_at",
+        "last_attempt_at",
+        "delivered_at",
+        "cancelled_at",
+        "last_error",
+    },
+    "notification_deliveries": {
+        "id",
+        "notification_id",
+        "channel",
+        "status",
+        "attempt_count",
+        "created_at",
+        "last_attempt_at",
+        "delivered_at",
+        "cancelled_at",
+        "last_error",
+    },
 }
 
 
