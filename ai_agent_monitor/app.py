@@ -341,6 +341,24 @@ def connect_db() -> sqlite3.Connection:
         )
         """
     )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS notification_outbox (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_type TEXT NOT NULL,
+            entity_type TEXT NOT NULL,
+            entity_id INTEGER NOT NULL,
+            payload_json TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            attempt_count INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            last_attempt_at TEXT,
+            delivered_at TEXT,
+            last_error TEXT,
+            UNIQUE(event_type, entity_type, entity_id)
+        )
+        """
+    )
     connection.commit()
     return connection
 
@@ -440,6 +458,184 @@ def complete_task() -> bool:
         return cursor.rowcount > 0
 
 
+def _enqueue_notification_event(
+    connection: sqlite3.Connection,
+    *,
+    event_type: str,
+    entity_type: str,
+    entity_id: int,
+    payload: dict[str, object],
+    created_at: str,
+) -> int:
+    cursor = connection.execute(
+        """
+        INSERT INTO notification_outbox (
+            event_type,
+            entity_type,
+            entity_id,
+            payload_json,
+            status,
+            attempt_count,
+            created_at
+        )
+        VALUES (?, ?, ?, ?, 'pending', 0, ?)
+        ON CONFLICT(event_type, entity_type, entity_id) DO NOTHING
+        """,
+        (
+            event_type,
+            entity_type,
+            entity_id,
+            json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+            created_at,
+        ),
+    )
+    if cursor.lastrowid:
+        return int(cursor.lastrowid)
+
+    row = connection.execute(
+        """
+        SELECT id
+        FROM notification_outbox
+        WHERE event_type = ? AND entity_type = ? AND entity_id = ?
+        """,
+        (event_type, entity_type, entity_id),
+    ).fetchone()
+    if row is None:
+        raise RuntimeError("Notification outbox event could not be created.")
+    return int(row[0])
+
+
+def list_notification_outbox(
+    *,
+    status: str | None = None,
+    limit: int = 50,
+) -> list[dict[str, object]]:
+    if limit < 1:
+        raise ValueError("Notification limit must be at least 1.")
+    if status is not None and status not in {"pending", "delivered"}:
+        raise ValueError("Notification status must be 'pending' or 'delivered'.")
+
+    query = """
+        SELECT
+            id,
+            event_type,
+            entity_type,
+            entity_id,
+            payload_json,
+            status,
+            attempt_count,
+            created_at,
+            last_attempt_at,
+            delivered_at,
+            last_error
+        FROM notification_outbox
+    """
+    parameters: list[object] = []
+    if status is not None:
+        query += " WHERE status = ?"
+        parameters.append(status)
+    query += " ORDER BY id ASC LIMIT ?"
+    parameters.append(limit)
+
+    with database_session() as connection:
+        rows = connection.execute(query, tuple(parameters)).fetchall()
+
+    return [
+        {
+            "id": row[0],
+            "event_type": row[1],
+            "entity_type": row[2],
+            "entity_id": row[3],
+            "payload": json.loads(row[4]),
+            "status": row[5],
+            "attempt_count": row[6],
+            "created_at": row[7],
+            "last_attempt_at": row[8],
+            "delivered_at": row[9],
+            "last_error": row[10],
+        }
+        for row in rows
+    ]
+
+
+def record_notification_attempt(
+    notification_id: int,
+    *,
+    delivered: bool,
+    error: str | None = None,
+) -> dict[str, object]:
+    attempted_at = utc_now()
+    with database_session() as connection:
+        row = connection.execute(
+            """
+            SELECT status, attempt_count
+            FROM notification_outbox
+            WHERE id = ?
+            """,
+            (notification_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"Notification {notification_id} does not exist.")
+
+        if row[0] == "delivered":
+            existing = connection.execute(
+                """
+                SELECT delivered_at
+                FROM notification_outbox
+                WHERE id = ?
+                """,
+                (notification_id,),
+            ).fetchone()
+            return {
+                "id": notification_id,
+                "status": "delivered",
+                "attempt_count": int(row[1]),
+                "delivered_at": existing[0] if existing else None,
+            }
+
+        attempt_count = int(row[1]) + 1
+        if delivered:
+            connection.execute(
+                """
+                UPDATE notification_outbox
+                SET
+                    status = 'delivered',
+                    attempt_count = ?,
+                    last_attempt_at = ?,
+                    delivered_at = ?,
+                    last_error = NULL
+                WHERE id = ?
+                """,
+                (attempt_count, attempted_at, attempted_at, notification_id),
+            )
+            return {
+                "id": notification_id,
+                "status": "delivered",
+                "attempt_count": attempt_count,
+                "delivered_at": attempted_at,
+            }
+
+        message = (error or "Notification delivery failed.").strip()
+        connection.execute(
+            """
+            UPDATE notification_outbox
+            SET
+                status = 'pending',
+                attempt_count = ?,
+                last_attempt_at = ?,
+                last_error = ?
+            WHERE id = ?
+            """,
+            (attempt_count, attempted_at, message, notification_id),
+        )
+        return {
+            "id": notification_id,
+            "status": "pending",
+            "attempt_count": attempt_count,
+            "last_error": message,
+        }
+
+
 def ask_question(question: str) -> dict[str, object]:
     question = question.strip()
     if not question:
@@ -455,12 +651,26 @@ def ask_question(question: str) -> dict[str, object]:
             """,
             (question, created_at),
         )
-        question_id = cursor.lastrowid
+        question_id = int(cursor.lastrowid)
+        notification_id = _enqueue_notification_event(
+            connection,
+            event_type="question.created",
+            entity_type="question",
+            entity_id=question_id,
+            payload={
+                "project": project_info(),
+                "question_id": question_id,
+                "question": question,
+                "created_at": created_at,
+            },
+            created_at=created_at,
+        )
 
     return {
         "id": question_id,
         "question": question,
         "created_at": created_at,
+        "notification_id": notification_id,
     }
 
 
