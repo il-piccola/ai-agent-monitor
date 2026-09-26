@@ -652,7 +652,7 @@ def ask_question(question: str) -> dict[str, object]:
             (question, created_at),
         )
         question_id = int(cursor.lastrowid)
-        notification_id = _enqueue_notification_event(
+        _enqueue_notification_event(
             connection,
             event_type="question.created",
             entity_type="question",
