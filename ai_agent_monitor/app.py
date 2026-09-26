@@ -349,6 +349,17 @@ def _ensure_notification_deliveries_target(connection: sqlite3.Connection) -> No
     )
     connection.execute("DROP TABLE notification_deliveries_legacy")
 
+    recipients = email_recipients()
+    if len(recipients) == 1:
+        connection.execute(
+            """
+            UPDATE notification_deliveries
+            SET target = ?
+            WHERE channel = 'email' AND target = ''
+            """,
+            (recipients[0],),
+        )
+
 
 def _ensure_notification_outbox_columns(connection: sqlite3.Connection) -> None:
     columns = {
