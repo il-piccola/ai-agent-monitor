@@ -3368,7 +3368,13 @@ def parse_notify_args(argv: list[str]) -> argparse.Namespace:
     email = subparsers.add_parser("email", help="Configure optional email notifications")
     email_actions = email.add_subparsers(dest="action", required=True)
     email_set = email_actions.add_parser("set", help="Set SMTP email settings")
-    email_set.add_argument("--to", required=True, dest="to_address")
+    email_set.add_argument(
+        "--to",
+        required=True,
+        action="append",
+        dest="to_addresses",
+        help="Notification recipient. Repeat --to to configure multiple recipients.",
+    )
     email_set.add_argument("--from-address", required=True)
     email_set.add_argument("--smtp-host", required=True)
     email_set.add_argument("--smtp-port", type=int, default=587)
@@ -3378,6 +3384,17 @@ def parse_notify_args(argv: list[str]) -> argparse.Namespace:
         choices=("starttls", "ssl", "none"),
         default="starttls",
     )
+    recipient = email_actions.add_parser(
+        "recipient",
+        help="Add, remove, or list email notification recipients",
+    )
+    recipient_actions = recipient.add_subparsers(dest="recipient_action", required=True)
+    recipient_add = recipient_actions.add_parser("add", help="Add recipient addresses")
+    recipient_add.add_argument("addresses", nargs="+")
+    recipient_remove = recipient_actions.add_parser("remove", help="Remove recipient addresses")
+    recipient_remove.add_argument("addresses", nargs="+")
+    recipient_actions.add_parser("list", help="List recipient addresses")
+
     email_actions.add_parser("on", help="Enable email for future notifications")
     email_actions.add_parser("off", help="Disable email and cancel pending email deliveries")
 
@@ -3493,7 +3510,7 @@ def main() -> None:
         if args.section == "email":
             if args.action == "set":
                 configure_email(
-                    to_address=args.to_address,
+                    to_addresses=args.to_addresses,
                     from_address=args.from_address,
                     smtp_host=args.smtp_host,
                     smtp_port=args.smtp_port,
@@ -3501,6 +3518,21 @@ def main() -> None:
                     security=args.security,
                 )
                 print("Email notification settings configured.")
+                return
+            if args.action == "recipient":
+                if args.recipient_action == "add":
+                    recipients = add_email_recipients(args.addresses)
+                elif args.recipient_action == "remove":
+                    recipients = remove_email_recipients(args.addresses)
+                else:
+                    recipients = email_recipients()
+                print(
+                    json.dumps(
+                        {"recipients": recipients},
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                )
                 return
             enabled = args.action == "on"
             set_notification_channel_enabled("email", enabled)
