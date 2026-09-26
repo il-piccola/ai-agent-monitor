@@ -2701,6 +2701,55 @@ def _doctor_startup() -> dict[str, object]:
     )
 
 
+def _doctor_notifications() -> dict[str, object]:
+    try:
+        config = read_notification_config()
+    except RuntimeError as exc:
+        return _doctor_result(
+            "notifications",
+            "error",
+            "Notification configuration could not be read.",
+            details={"error": str(exc)},
+        )
+
+    problems: list[str] = []
+    telegram = config["telegram"]
+    email = config["email"]
+
+    if telegram.get("enabled") is True:
+        if not telegram.get("chat_id"):
+            problems.append("Telegram is enabled without a chat ID.")
+        if not os.environ.get(TELEGRAM_TOKEN_ENV):
+            problems.append(f"Telegram is enabled but {TELEGRAM_TOKEN_ENV} is not set.")
+
+    if email.get("enabled") is True:
+        for key in ("to", "from_address", "smtp_host", "smtp_port"):
+            if not email.get(key):
+                problems.append(f"Email is enabled but {key} is not configured.")
+        if email.get("username") and not os.environ.get(SMTP_PASSWORD_ENV):
+            problems.append(
+                f"Authenticated email is enabled but {SMTP_PASSWORD_ENV} is not set."
+            )
+
+    if problems:
+        return _doctor_result(
+            "notifications",
+            "error",
+            "Notification delivery configuration is incomplete.",
+            details={"problems": problems},
+        )
+
+    return _doctor_result(
+        "notifications",
+        "ok",
+        "Notification delivery configuration is usable.",
+        details={
+            "telegram_enabled": telegram.get("enabled") is True,
+            "email_enabled": email.get("enabled") is True,
+        },
+    )
+
+
 def _doctor_runtime() -> dict[str, object]:
     runtime = remote_runtime_dir()
     if not runtime.is_dir():
@@ -2767,6 +2816,7 @@ def doctor_snapshot() -> dict[str, object]:
         _doctor_agent_integration(),
         _doctor_remote(),
         _doctor_startup(),
+        _doctor_notifications(),
         _doctor_runtime(),
     ]
 
