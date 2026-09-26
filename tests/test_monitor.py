@@ -1077,6 +1077,30 @@ class NotificationOutboxTests(MonitorStorageTestCase):
         self.assertEqual(first, second)
         self.assertEqual(len(second), 1)
 
+    def test_answer_cancels_pending_question_notification(self) -> None:
+        question = monitor.ask_question("Answer before delivery?")
+
+        monitor.answer_question(question["id"], "Yes")
+
+        self.assertEqual(monitor.list_notification_outbox(status="pending"), [])
+        cancelled = monitor.list_notification_outbox(status="cancelled")
+        self.assertEqual(len(cancelled), 1)
+        self.assertEqual(cancelled[0]["entity_id"], question["id"])
+        self.assertIsNotNone(cancelled[0]["cancelled_at"])
+        self.assertEqual(cancelled[0]["attempt_count"], 0)
+
+    def test_answer_does_not_cancel_already_delivered_notification(self) -> None:
+        question = monitor.ask_question("Already delivered?")
+        event = monitor.list_notification_outbox()[0]
+        monitor.record_notification_attempt(event["id"], delivered=True)
+
+        monitor.answer_question(question["id"], "Yes")
+
+        delivered = monitor.list_notification_outbox(status="delivered")
+        self.assertEqual(len(delivered), 1)
+        self.assertEqual(delivered[0]["entity_id"], question["id"])
+        self.assertIsNone(delivered[0]["cancelled_at"])
+
     def test_notifications_cli_outputs_json_and_filters_status(self) -> None:
         monitor.ask_question("CLI event")
         event = monitor.list_notification_outbox()[0]
