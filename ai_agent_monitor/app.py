@@ -10,10 +10,13 @@ import json
 import mimetypes
 import re
 import shutil
+import smtplib
 import socket
 import sqlite3
+import ssl
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -21,6 +24,7 @@ import urllib.request
 import uuid
 from contextlib import closing, contextmanager
 from datetime import datetime, timezone
+from email.message import EmailMessage
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Iterator
