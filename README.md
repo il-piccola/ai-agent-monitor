@@ -508,3 +508,26 @@ monitor agent emit codex
 ```
 
 Phase 12 does not automatically start an agent, resume a run, or modify vendor-specific configuration outside the files above.
+
+
+## Diagnose a project
+
+Version 1.1 adds read-only operational diagnostics:
+
+```bash
+monitor doctor
+```
+
+The human-readable report checks the package, project, SQLite database/schema, agent onboarding files, project remote state, Windows logon-startup state, and runtime files.
+
+For automation or agent use:
+
+```bash
+monitor doctor --json
+```
+
+The JSON report has an overall status of `ok`, `warning`, or `error`. An error exits with status code 1. Warnings remain exit code 0.
+
+The first doctor implementation is deliberately diagnostic only. It does not migrate a database, delete stale runtime state, stop processes, change Tailscale Serve, or rewrite onboarding files.
+
+Runtime diagnostics currently warn when remote log files exceed 10 MiB or when temporary runtime files remain after an interrupted write.
