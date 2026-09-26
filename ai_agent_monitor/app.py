@@ -57,6 +57,7 @@ PROJECT_GITIGNORE = """monitor.db
 monitor.db-shm
 monitor.db-wal
 monitor.db-journal
+notifications.json
 artifacts/
 runtime/
 """
