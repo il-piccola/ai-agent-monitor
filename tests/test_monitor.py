@@ -1208,12 +1208,29 @@ class NotificationOutboxTests(MonitorStorageTestCase):
             patch.object(monitor, "_send_telegram_notification") as telegram_again,
             patch.object(monitor, "_send_email_notification") as email_again,
         ):
-            second = monitor.dispatch_pending_notifications()
+            second = monitor.dispatch_pending_notifications(force=True)
 
         self.assertEqual(second, {"attempted": 1, "delivered": 1, "failed": 0})
         telegram_again.assert_not_called()
         email_again.assert_called_once()
         self.assertEqual(monitor.list_notification_outbox()[0]["status"], "delivered")
+
+    def test_automatic_retry_respects_backoff_but_force_bypasses_it(self) -> None:
+        monitor.ask_question("Back off")
+        delivery = monitor.list_notification_deliveries()[0]
+        monitor.record_notification_delivery_attempt(
+            delivery["id"],
+            delivered=False,
+            error="temporary",
+        )
+
+        with patch.object(monitor, "_send_telegram_notification") as sender:
+            automatic = monitor.dispatch_pending_notifications()
+            forced = monitor.dispatch_pending_notifications(force=True)
+
+        self.assertEqual(automatic["attempted"], 0)
+        self.assertEqual(forced["attempted"], 1)
+        sender.assert_called_once()
 
     def test_telegram_transport_posts_chat_id_and_question(self) -> None:
         response = MagicMock()
