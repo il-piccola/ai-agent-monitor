@@ -499,6 +499,7 @@ def complete_task() -> bool:
 TELEGRAM_TOKEN_ENV = "AI_AGENT_MONITOR_TELEGRAM_BOT_TOKEN"
 SMTP_PASSWORD_ENV = "AI_AGENT_MONITOR_SMTP_PASSWORD"
 NOTIFICATION_POLL_SECONDS = 5.0
+NOTIFICATION_RETRY_SECONDS = 60.0
 
 
 def notification_config_path() -> Path:
@@ -1175,13 +1176,18 @@ def _send_email_notification(payload: dict[str, object]) -> None:
         client.send_message(message)
 
 
-def _pending_notification_jobs(limit: int = 20) -> list[dict[str, object]]:
+def _pending_notification_jobs(
+    limit: int = 20,
+    *,
+    force: bool = False,
+) -> list[dict[str, object]]:
     with database_session() as connection:
         rows = connection.execute(
             """
             SELECT
                 d.id,
                 d.channel,
+                d.last_attempt_at,
                 o.payload_json
             FROM notification_deliveries AS d
             JOIN notification_outbox AS o ON o.id = d.notification_id
@@ -1189,25 +1195,49 @@ def _pending_notification_jobs(limit: int = 20) -> list[dict[str, object]]:
             ORDER BY d.id ASC
             LIMIT ?
             """,
-            (limit,),
+            (limit * 4,),
         ).fetchall()
 
-    return [
-        {
-            "delivery_id": int(row[0]),
-            "channel": str(row[1]),
-            "payload": json.loads(row[2]),
-        }
-        for row in rows
-    ]
+    now = datetime.now(timezone.utc)
+    jobs: list[dict[str, object]] = []
+    for row in rows:
+        last_attempt_at = row[2]
+        if not force and isinstance(last_attempt_at, str) and last_attempt_at:
+            try:
+                last_attempt = datetime.fromisoformat(
+                    last_attempt_at.replace("Z", "+00:00")
+                )
+            except ValueError:
+                last_attempt = None
+            if (
+                last_attempt is not None
+                and (now - last_attempt).total_seconds() < NOTIFICATION_RETRY_SECONDS
+            ):
+                continue
+
+        jobs.append(
+            {
+                "delivery_id": int(row[0]),
+                "channel": str(row[1]),
+                "payload": json.loads(row[3]),
+            }
+        )
+        if len(jobs) >= limit:
+            break
+
+    return jobs
 
 
-def dispatch_pending_notifications(limit: int = 20) -> dict[str, int]:
+def dispatch_pending_notifications(
+    limit: int = 20,
+    *,
+    force: bool = False,
+) -> dict[str, int]:
     attempted = 0
     delivered = 0
     failed = 0
 
-    for job in _pending_notification_jobs(limit):
+    for job in _pending_notification_jobs(limit, force=force):
         attempted += 1
         delivery_id = int(job["delivery_id"])
         channel = str(job["channel"])
@@ -1240,7 +1270,7 @@ def dispatch_pending_notifications(limit: int = 20) -> dict[str, int]:
 def _notification_dispatch_loop(stop_event: threading.Event) -> None:
     while not stop_event.wait(NOTIFICATION_POLL_SECONDS):
         try:
-            dispatch_pending_notifications()
+            dispatch_pending_notifications(force=False)
         except Exception:
             # Individual delivery failures are persisted by the dispatcher.
             # Unexpected loop errors must not stop the dashboard server.
@@ -3222,7 +3252,13 @@ def main() -> None:
             print(json.dumps(notification_config_public(), ensure_ascii=False, indent=2))
             return
         if args.section == "send":
-            print(json.dumps(dispatch_pending_notifications(), ensure_ascii=False, indent=2))
+            print(
+                json.dumps(
+                    dispatch_pending_notifications(force=True),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
             return
         if args.section == "telegram":
             if args.action == "set":
