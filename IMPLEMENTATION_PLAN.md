@@ -210,7 +210,7 @@ Success condition: the complete human/agent loop works in a real project with no
 
 If the success condition is met and no blocking defects remain, release `1.0.0`.
 
-## Release v1.0.0: Formal GitHub release ← in progress
+## Release v1.0.0: Formal GitHub release ✅
 
 Freeze the verified Phase 13 result as the first formal release.
 
