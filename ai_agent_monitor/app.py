@@ -2592,6 +2592,7 @@ DOCTOR_REQUIRED_SCHEMA = {
         "id",
         "notification_id",
         "channel",
+        "target",
         "status",
         "attempt_count",
         "created_at",
@@ -2971,7 +2972,9 @@ def _doctor_notifications() -> dict[str, object]:
             problems.append(f"Telegram is enabled but {TELEGRAM_TOKEN_ENV} is not set.")
 
     if email.get("enabled") is True:
-        for key in ("to", "from_address", "smtp_host", "smtp_port"):
+        if not email_recipients():
+            problems.append("Email is enabled but no recipients are configured.")
+        for key in ("from_address", "smtp_host", "smtp_port"):
             if not email.get(key):
                 problems.append(f"Email is enabled but {key} is not configured.")
         if email.get("username") and not os.environ.get(SMTP_PASSWORD_ENV):
