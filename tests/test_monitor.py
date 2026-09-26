@@ -1023,10 +1023,11 @@ class DoctorTests(MonitorStorageTestCase):
 
     def test_doctor_reports_incomplete_database_schema(self) -> None:
         monitor.DATA_DIR.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(monitor.DB_PATH) as connection:
+        with closing(sqlite3.connect(monitor.DB_PATH)) as connection:
             connection.execute(
                 "CREATE TABLE progress (id INTEGER PRIMARY KEY, message TEXT, created_at TEXT)"
             )
+            connection.commit()
 
         report = monitor.doctor_snapshot()
         database = self._check(report, "database")
