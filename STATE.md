@@ -8,7 +8,7 @@
 - Formal release: `v1.0.0` published
 - Development package version: `1.1.0`
 - Completed phases: 1 through 14
-- Current phase: Phase 14 verified on N100; Phase 15 not started
+- Current phase: Phase 15 durable notifications in progress
 
 ## v1.0 baseline
 
@@ -54,11 +54,26 @@ The CLI does not currently implement a global `--version` option. Version 1.1.0 
 - healthy state returns exit code 0
 - `--json` provides machine-readable output consistent with human output
 
+## Phase 15 work in progress
+
+The service-neutral durable outbox is implemented before selecting the first external notification adapter.
+
+Current outbox behavior:
+
+- creating a human question and its `question.created` notification event is one SQLite transaction
+- logical events are unique by event type, entity type, and entity ID
+- pending events survive process/database reconnection
+- failed attempts remain pending and record attempt count, attempt time, and last error
+- successful attempts become delivered and are not counted again
+- if a question is answered before its pending notification is delivered, the notification is cancelled instead of sending a stale question
+- `monitor notifications` exposes outbox state as JSON
+- no notification secret is stored in the repository or outbox payload
+
 ## Next task
 
-Phase 15 has not started.
+Select exactly one first external notification adapter: Discord, Slack, or Telegram.
 
-Before implementing notifications, define the durable notification event/outbox model and select exactly one first notification adapter. Keep SQLite as the authoritative question/answer store.
+Then implement only that adapter, keep its secret outside Git/runtime database records that may be shared, and connect delivery to the durable outbox. Verify temporary failure, retry, restart persistence, successful delivery, and iPhone notification.
 
 Do not add automatic agent resume in Phase 15; that remains Phase 16.
 
