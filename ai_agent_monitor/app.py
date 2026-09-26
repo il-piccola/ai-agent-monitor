@@ -25,6 +25,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Iterator
 
+from . import __version__
+
 HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 MAX_JSON_BODY = 64 * 1024
@@ -1466,6 +1468,468 @@ def startup_remove() -> dict[str, object]:
     return {"removed": True, "launcher_path": str(expected_launcher)}
 
 
+DOCTOR_SCHEMA_VERSION = 1
+DOCTOR_LOG_WARNING_BYTES = 10 * 1024 * 1024
+DOCTOR_REQUIRED_SCHEMA = {
+    "progress": {"id", "message", "created_at"},
+    "current_task": {"id", "title", "started_at"},
+    "questions": {"id", "question", "status", "created_at", "answer", "answered_at"},
+    "artifacts": {
+        "id",
+        "display_name",
+        "original_name",
+        "storage_name",
+        "size_bytes",
+        "sha256",
+        "mime_type",
+        "git_commit",
+        "created_at",
+    },
+    "metrics": {"key", "label", "value", "unit", "updated_at"},
+}
+
+
+def _doctor_result(
+    name: str,
+    status: str,
+    message: str,
+    *,
+    details: dict[str, object] | None = None,
+) -> dict[str, object]:
+    result: dict[str, object] = {
+        "name": name,
+        "status": status,
+        "message": message,
+    }
+    if details:
+        result["details"] = details
+    return result
+
+
+def _read_only_database() -> sqlite3.Connection:
+    uri = DB_PATH.resolve().as_uri() + "?mode=ro"
+    connection = sqlite3.connect(uri, uri=True, timeout=1)
+    connection.execute("PRAGMA query_only=ON")
+    return connection
+
+
+def _doctor_database() -> dict[str, object]:
+    if not DB_PATH.is_file():
+        return _doctor_result(
+            "database",
+            "ok",
+            "Monitor database is not initialized for this project.",
+            details={"initialized": False},
+        )
+
+    try:
+        with closing(_read_only_database()) as connection:
+            quick_check = connection.execute("PRAGMA quick_check").fetchone()
+            if quick_check is None or quick_check[0] != "ok":
+                return _doctor_result(
+                    "database",
+                    "error",
+                    "SQLite quick_check reported a problem.",
+                    details={"quick_check": quick_check[0] if quick_check else None},
+                )
+
+            tables = {
+                row[0]
+                for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                ).fetchall()
+            }
+            missing_tables = sorted(set(DOCTOR_REQUIRED_SCHEMA) - tables)
+            missing_columns: dict[str, list[str]] = {}
+            for table, required_columns in DOCTOR_REQUIRED_SCHEMA.items():
+                if table not in tables:
+                    continue
+                columns = {
+                    row[1]
+                    for row in connection.execute(
+                        f"PRAGMA table_info({table})"
+                    ).fetchall()
+                }
+                missing = sorted(required_columns - columns)
+                if missing:
+                    missing_columns[table] = missing
+
+            if missing_tables or missing_columns:
+                return _doctor_result(
+                    "database",
+                    "error",
+                    "Monitor database schema is incomplete.",
+                    details={
+                        "missing_tables": missing_tables,
+                        "missing_columns": missing_columns,
+                    },
+                )
+
+            task_row = connection.execute(
+                "SELECT title FROM current_task WHERE id = 1"
+            ).fetchone()
+            open_questions = connection.execute(
+                "SELECT COUNT(*) FROM questions WHERE status = 'open'"
+            ).fetchone()[0]
+
+            return _doctor_result(
+                "database",
+                "ok",
+                "SQLite database is readable and the required schema is present.",
+                details={
+                    "initialized": True,
+                    "current_task": task_row[0] if task_row else None,
+                    "open_questions": open_questions,
+                },
+            )
+    except (sqlite3.Error, OSError) as exc:
+        return _doctor_result(
+            "database",
+            "error",
+            "Monitor database could not be read safely.",
+            details={"error": str(exc)},
+        )
+
+
+def _doctor_agent_integration() -> dict[str, object]:
+    contract = agent_contract_target()
+    skill = codex_skill_target()
+    agents = agents_file_path()
+
+    contract_exists = contract.is_file()
+    skill_exists = skill.is_file()
+    agents_text = agents.read_text(encoding="utf-8") if agents.is_file() else ""
+    start_count = agents_text.count(AGENTS_BLOCK_START)
+    end_count = agents_text.count(AGENTS_BLOCK_END)
+
+    if start_count != end_count or start_count > 1:
+        return _doctor_result(
+            "agent_integration",
+            "error",
+            "AGENTS.md contains invalid AI Agent Monitor managed-block markers.",
+            details={"start_markers": start_count, "end_markers": end_count},
+        )
+
+    managed_block = start_count == 1
+    if not contract_exists and not skill_exists and not managed_block:
+        return _doctor_result(
+            "agent_integration",
+            "ok",
+            "Agent onboarding is not installed for this project.",
+            details={"installed": False},
+        )
+
+    problems: list[str] = []
+    warnings: list[str] = []
+
+    if contract_exists:
+        try:
+            if contract.read_text(encoding="utf-8") != AGENT_CONTRACT_PATH.read_text(
+                encoding="utf-8"
+            ):
+                warnings.append("AI_AGENT_MONITOR.md differs from the packaged contract.")
+        except OSError as exc:
+            problems.append(f"Could not read AI_AGENT_MONITOR.md: {exc}")
+    else:
+        problems.append("AI_AGENT_MONITOR.md is missing.")
+
+    if managed_block or skill_exists:
+        if not managed_block:
+            problems.append("The Codex skill exists but the AGENTS.md managed block is missing.")
+        if not skill_exists:
+            problems.append("The AGENTS.md managed block exists but the Codex skill is missing.")
+        else:
+            try:
+                if skill.read_text(encoding="utf-8") != CODEX_SKILL_PATH.read_text(
+                    encoding="utf-8"
+                ):
+                    warnings.append("The Codex skill differs from the packaged skill.")
+            except OSError as exc:
+                problems.append(f"Could not read the Codex skill: {exc}")
+
+    if problems:
+        return _doctor_result(
+            "agent_integration",
+            "error",
+            "Agent onboarding files are inconsistent.",
+            details={"problems": problems, "warnings": warnings},
+        )
+    if warnings:
+        return _doctor_result(
+            "agent_integration",
+            "warning",
+            "Agent onboarding is installed but generated content was modified.",
+            details={"warnings": warnings},
+        )
+
+    kind = "codex" if managed_block else "generic"
+    return _doctor_result(
+        "agent_integration",
+        "ok",
+        f"{kind.capitalize()} agent onboarding is consistent.",
+        details={"installed": True, "kind": kind},
+    )
+
+
+def _serve_proxy_for_port(status: dict[str, object], port: int) -> str | None:
+    web = status.get("Web")
+    if not isinstance(web, dict):
+        return None
+    suffix = f":{port}"
+    for key, entry in web.items():
+        if not str(key).endswith(suffix) or not isinstance(entry, dict):
+            continue
+        handlers = entry.get("Handlers")
+        if not isinstance(handlers, dict):
+            continue
+        root_handler = handlers.get("/")
+        if not isinstance(root_handler, dict):
+            continue
+        proxy = root_handler.get("Proxy")
+        if isinstance(proxy, str):
+            return proxy
+    return None
+
+
+def _doctor_remote() -> dict[str, object]:
+    if not remote_state_path().is_file():
+        return _doctor_result(
+            "remote",
+            "ok",
+            "Project remote access is not configured.",
+            details={"configured": False},
+        )
+
+    try:
+        state = read_remote_state()
+    except (RuntimeError, OSError) as exc:
+        return _doctor_result(
+            "remote",
+            "error",
+            "Remote runtime state could not be read.",
+            details={"error": str(exc)},
+        )
+
+    if state is None:
+        return _doctor_result(
+            "remote",
+            "ok",
+            "Project remote access is not configured.",
+            details={"configured": False},
+        )
+
+    problems: list[str] = []
+    if state.get("project_root") != str(PROJECT_ROOT):
+        problems.append("Remote state belongs to a different project.")
+
+    pid = state.get("pid")
+    backend_url = state.get("backend_url")
+    https_port = state.get("https_port")
+
+    if not isinstance(pid, int):
+        problems.append("Remote state has no valid PID.")
+    elif not _process_is_alive(pid):
+        problems.append("Saved remote PID is not running.")
+
+    if not isinstance(backend_url, str):
+        problems.append("Remote state has no valid backend URL.")
+    elif isinstance(pid, int) and _process_is_alive(pid):
+        if not _project_server_matches(backend_url, project_id()):
+            problems.append("Live backend does not identify as this project.")
+
+    if not isinstance(https_port, int):
+        problems.append("Remote state has no valid Tailscale HTTPS port.")
+    elif isinstance(backend_url, str):
+        try:
+            serve_status = _tailscale_status_json()
+            proxy = _serve_proxy_for_port(serve_status, https_port)
+            if proxy != backend_url:
+                problems.append(
+                    "Tailscale Serve mapping does not match the saved backend URL."
+                )
+        except RuntimeError as exc:
+            problems.append(f"Tailscale Serve status is unavailable: {exc}")
+
+    if problems:
+        return _doctor_result(
+            "remote",
+            "error",
+            "Remote runtime state is inconsistent.",
+            details={"configured": True, "problems": problems},
+        )
+
+    return _doctor_result(
+        "remote",
+        "ok",
+        "Remote backend and Tailscale Serve mapping are consistent.",
+        details={
+            "configured": True,
+            "backend_url": backend_url,
+            "https_port": https_port,
+        },
+    )
+
+
+def _doctor_startup() -> dict[str, object]:
+    if not startup_state_path().is_file():
+        return _doctor_result(
+            "startup",
+            "ok",
+            "Automatic logon startup is not configured for this project.",
+            details={"configured": False},
+        )
+
+    try:
+        state = read_startup_state()
+    except (RuntimeError, OSError) as exc:
+        return _doctor_result(
+            "startup",
+            "error",
+            "Startup runtime state could not be read.",
+            details={"error": str(exc)},
+        )
+
+    if state is None:
+        return _doctor_result(
+            "startup",
+            "ok",
+            "Automatic logon startup is not configured for this project.",
+            details={"configured": False},
+        )
+
+    problems: list[str] = []
+    if state.get("project_root") != str(PROJECT_ROOT):
+        problems.append("Startup state belongs to a different project.")
+    if state.get("project_id") != project_id():
+        problems.append("Startup state has the wrong project ID.")
+    if state.get("mode") != "startup-folder":
+        problems.append("Startup state uses an unsupported mode.")
+
+    launcher_value = state.get("launcher_path")
+    script_value = state.get("script_path")
+    if not isinstance(launcher_value, str) or not Path(launcher_value).is_file():
+        problems.append("Startup launcher is missing.")
+    if not isinstance(script_value, str) or not Path(script_value).is_file():
+        problems.append("Startup PowerShell script is missing.")
+
+    if sys.platform == "win32" and isinstance(launcher_value, str):
+        try:
+            if Path(launcher_value) != startup_launcher_path():
+                problems.append("Startup launcher path does not match this project.")
+        except RuntimeError as exc:
+            problems.append(f"Windows Startup folder could not be resolved: {exc}")
+
+    if problems:
+        return _doctor_result(
+            "startup",
+            "error",
+            "Automatic startup state is inconsistent.",
+            details={"configured": True, "problems": problems},
+        )
+
+    return _doctor_result(
+        "startup",
+        "ok",
+        "Automatic logon startup files are consistent.",
+        details={"configured": True, "launcher_path": launcher_value},
+    )
+
+
+def _doctor_runtime() -> dict[str, object]:
+    runtime = remote_runtime_dir()
+    if not runtime.is_dir():
+        return _doctor_result(
+            "runtime",
+            "ok",
+            "No runtime directory is present.",
+        )
+
+    warnings: list[str] = []
+    large_logs: dict[str, int] = {}
+    for name in ("remote.stdout.log", "remote.stderr.log"):
+        path = runtime / name
+        if path.is_file():
+            size = path.stat().st_size
+            if size > DOCTOR_LOG_WARNING_BYTES:
+                large_logs[name] = size
+
+    if large_logs:
+        warnings.append("Remote log files exceed the 10 MiB warning threshold.")
+
+    temporary_files = sorted(path.name for path in runtime.glob("*.tmp") if path.is_file())
+    if temporary_files:
+        warnings.append("Temporary runtime files remain from an interrupted write.")
+
+    if warnings:
+        return _doctor_result(
+            "runtime",
+            "warning",
+            "Runtime files need attention.",
+            details={
+                "warnings": warnings,
+                "large_logs": large_logs,
+                "temporary_files": temporary_files,
+            },
+        )
+
+    return _doctor_result(
+        "runtime",
+        "ok",
+        "Runtime files are within the current diagnostic thresholds.",
+    )
+
+
+def doctor_snapshot() -> dict[str, object]:
+    checks = [
+        _doctor_result(
+            "package",
+            "ok",
+            f"AI Agent Monitor {__version__}",
+            details={"version": __version__},
+        ),
+        _doctor_result(
+            "project",
+            "ok",
+            f"Project: {PROJECT_ROOT.name}",
+            details={
+                "project_id": project_id(),
+                "project_root": str(PROJECT_ROOT),
+                "data_dir": str(DATA_DIR),
+            },
+        ),
+        _doctor_database(),
+        _doctor_agent_integration(),
+        _doctor_remote(),
+        _doctor_startup(),
+        _doctor_runtime(),
+    ]
+
+    statuses = {str(check["status"]) for check in checks}
+    if "error" in statuses:
+        overall = "error"
+    elif "warning" in statuses:
+        overall = "warning"
+    else:
+        overall = "ok"
+
+    return {
+        "schema_version": DOCTOR_SCHEMA_VERSION,
+        "overall": overall,
+        "checks": checks,
+    }
+
+
+def format_doctor_report(report: dict[str, object]) -> str:
+    lines = [
+        "AI Agent Monitor Doctor",
+        f"Overall: {str(report['overall']).upper()}",
+    ]
+    for check in report["checks"]:
+        status = str(check["status"]).upper()
+        lines.append(f"[{status}] {check['name']}: {check['message']}")
+    return "\n".join(lines) + "\n"
+
+
 class DashboardHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         path = self.path.split("?", 1)[0]
@@ -1609,6 +2073,19 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def log_message(self, format: str, *args: object) -> None:
         return
+
+
+def parse_doctor_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="monitor doctor",
+        description="Diagnose the current project without changing monitor state.",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the diagnostic report as JSON.",
+    )
+    return parser.parse_args(argv)
 
 
 def parse_agent_args(argv: list[str]) -> argparse.Namespace:
@@ -1756,6 +2233,17 @@ def serve(port: int) -> None:
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "doctor":
+        args = parse_doctor_args(sys.argv[2:])
+        report = doctor_snapshot()
+        if args.json:
+            print(json.dumps(report, ensure_ascii=False, indent=2))
+        else:
+            print(format_doctor_report(report), end="")
+        if report["overall"] == "error":
+            raise SystemExit(1)
+        return
+
     if len(sys.argv) > 1 and sys.argv[1] == "agent":
         args = parse_agent_args(sys.argv[2:])
         if args.action == "install":
