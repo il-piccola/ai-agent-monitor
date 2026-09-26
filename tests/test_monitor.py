@@ -1317,6 +1317,96 @@ class NotificationOutboxTests(MonitorStorageTestCase):
         self.assertEqual(add.recipient_action, "add")
         self.assertEqual(add.addresses, ["third@example.com"])
 
+    def test_legacy_delivery_table_migrates_email_target(self) -> None:
+        monitor.DATA_DIR.mkdir(parents=True, exist_ok=True)
+        monitor.notification_config_path().write_text(
+            json.dumps(
+                {
+                    "email": {
+                        "enabled": True,
+                        "to": "legacy@example.com",
+                        "from_address": "sender@example.com",
+                        "smtp_host": "smtp.example.com",
+                        "smtp_port": 587,
+                        "username": None,
+                        "security": "starttls",
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        with closing(sqlite3.connect(monitor.DB_PATH)) as connection:
+            connection.execute(
+                """
+                CREATE TABLE notification_outbox (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event_type TEXT NOT NULL,
+                    entity_type TEXT NOT NULL,
+                    entity_id INTEGER NOT NULL,
+                    payload_json TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    attempt_count INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    last_attempt_at TEXT,
+                    delivered_at TEXT,
+                    cancelled_at TEXT,
+                    last_error TEXT,
+                    UNIQUE(event_type, entity_type, entity_id)
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE notification_deliveries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    notification_id INTEGER NOT NULL,
+                    channel TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pending',
+                    attempt_count INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    last_attempt_at TEXT,
+                    delivered_at TEXT,
+                    cancelled_at TEXT,
+                    last_error TEXT,
+                    UNIQUE(notification_id, channel)
+                )
+                """
+            )
+            connection.execute(
+                """
+                INSERT INTO notification_outbox (
+                    id, event_type, entity_type, entity_id, payload_json,
+                    status, attempt_count, created_at
+                )
+                VALUES (1, 'question.created', 'question', 1, '{}', 'pending', 0, '2026-01-01T00:00:00Z')
+                """
+            )
+            connection.execute(
+                """
+                INSERT INTO notification_deliveries (
+                    notification_id, channel, status, attempt_count, created_at
+                )
+                VALUES (1, 'email', 'pending', 0, '2026-01-01T00:00:00Z')
+                """
+            )
+            connection.commit()
+
+        monitor.connect_db().close()
+
+        deliveries = monitor.list_notification_deliveries()
+        self.assertEqual(deliveries[0]["target"], "legacy@example.com")
+
+    def test_invalid_email_recipient_is_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            monitor.configure_email(
+                to_address="not-an-email",
+                from_address="sender@example.org",
+                smtp_host="smtp.example.com",
+                smtp_port=587,
+                username=None,
+                security="starttls",
+            )
+
     def test_email_is_optional_and_off_by_default(self) -> None:
         monitor.configure_email(
             to_address="to@example.com",
