@@ -818,8 +818,125 @@ def list_notification_outbox(
     ]
 
 
-def record_notification_attempt(
+def list_notification_deliveries(
+    *,
+    notification_id: int | None = None,
+    status: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, object]]:
+    if limit < 1:
+        raise ValueError("Delivery limit must be at least 1.")
+    if status is not None and status not in {"pending", "delivered", "cancelled"}:
+        raise ValueError("Delivery status must be pending, delivered or cancelled.")
+
+    clauses: list[str] = []
+    parameters: list[object] = []
+    if notification_id is not None:
+        clauses.append("notification_id = ?")
+        parameters.append(notification_id)
+    if status is not None:
+        clauses.append("status = ?")
+        parameters.append(status)
+
+    query = """
+        SELECT
+            id,
+            notification_id,
+            channel,
+            status,
+            attempt_count,
+            created_at,
+            last_attempt_at,
+            delivered_at,
+            cancelled_at,
+            last_error
+        FROM notification_deliveries
+    """
+    if clauses:
+        query += " WHERE " + " AND ".join(clauses)
+    query += " ORDER BY id ASC LIMIT ?"
+    parameters.append(limit)
+
+    with database_session() as connection:
+        rows = connection.execute(query, tuple(parameters)).fetchall()
+
+    return [
+        {
+            "id": row[0],
+            "notification_id": row[1],
+            "channel": row[2],
+            "status": row[3],
+            "attempt_count": row[4],
+            "created_at": row[5],
+            "last_attempt_at": row[6],
+            "delivered_at": row[7],
+            "cancelled_at": row[8],
+            "last_error": row[9],
+        }
+        for row in rows
+    ]
+
+
+def _refresh_notification_status(
+    connection: sqlite3.Connection,
     notification_id: int,
+) -> None:
+    rows = connection.execute(
+        """
+        SELECT status, attempt_count, last_attempt_at, delivered_at, last_error
+        FROM notification_deliveries
+        WHERE notification_id = ?
+        """,
+        (notification_id,),
+    ).fetchall()
+    if not rows:
+        return
+
+    statuses = {row[0] for row in rows}
+    attempt_count = sum(int(row[1]) for row in rows)
+    last_attempts = [row[2] for row in rows if row[2]]
+    delivered_times = [row[3] for row in rows if row[3]]
+    errors = [f"{row[0]}: {row[4]}" for row in rows if row[4]]
+
+    if "pending" in statuses:
+        status = "pending"
+        delivered_at = None
+        cancelled_at = None
+    elif "delivered" in statuses:
+        status = "delivered"
+        delivered_at = max(delivered_times) if delivered_times else utc_now()
+        cancelled_at = None
+    else:
+        status = "cancelled"
+        delivered_at = None
+        cancelled_at = utc_now()
+
+    connection.execute(
+        """
+        UPDATE notification_outbox
+        SET
+            status = ?,
+            attempt_count = ?,
+            last_attempt_at = ?,
+            delivered_at = ?,
+            cancelled_at = ?,
+            last_error = ?
+        WHERE id = ?
+        """,
+        (
+            status,
+            attempt_count,
+            max(last_attempts) if last_attempts else None,
+            delivered_at,
+            cancelled_at,
+            "; ".join(errors) if errors else None,
+            notification_id,
+        ),
+    )
+
+
+def record_notification_delivery_attempt(
+    delivery_id: int,
     *,
     delivered: bool,
     error: str | None = None,
@@ -828,37 +945,34 @@ def record_notification_attempt(
     with database_session() as connection:
         row = connection.execute(
             """
-            SELECT status, attempt_count
-            FROM notification_outbox
+            SELECT notification_id, channel, status, attempt_count
+            FROM notification_deliveries
             WHERE id = ?
             """,
-            (notification_id,),
+            (delivery_id,),
         ).fetchone()
         if row is None:
-            raise ValueError(f"Notification {notification_id} does not exist.")
+            raise ValueError(f"Notification delivery {delivery_id} does not exist.")
 
-        if row[0] in {"delivered", "cancelled"}:
-            existing = connection.execute(
-                """
-                SELECT delivered_at, cancelled_at
-                FROM notification_outbox
-                WHERE id = ?
-                """,
-                (notification_id,),
-            ).fetchone()
+        notification_id = int(row[0])
+        channel = str(row[1])
+        current_status = str(row[2])
+        attempt_count = int(row[3])
+
+        if current_status in {"delivered", "cancelled"}:
             return {
-                "id": notification_id,
-                "status": row[0],
-                "attempt_count": int(row[1]),
-                "delivered_at": existing[0] if existing else None,
-                "cancelled_at": existing[1] if existing else None,
+                "id": delivery_id,
+                "notification_id": notification_id,
+                "channel": channel,
+                "status": current_status,
+                "attempt_count": attempt_count,
             }
 
-        attempt_count = int(row[1]) + 1
+        attempt_count += 1
         if delivered:
             connection.execute(
                 """
-                UPDATE notification_outbox
+                UPDATE notification_deliveries
                 SET
                     status = 'delivered',
                     attempt_count = ?,
@@ -867,33 +981,32 @@ def record_notification_attempt(
                     last_error = NULL
                 WHERE id = ?
                 """,
-                (attempt_count, attempted_at, attempted_at, notification_id),
+                (attempt_count, attempted_at, attempted_at, delivery_id),
             )
-            return {
-                "id": notification_id,
-                "status": "delivered",
-                "attempt_count": attempt_count,
-                "delivered_at": attempted_at,
-            }
+            status = "delivered"
+        else:
+            message = (error or "Notification delivery failed.").strip()
+            connection.execute(
+                """
+                UPDATE notification_deliveries
+                SET
+                    status = 'pending',
+                    attempt_count = ?,
+                    last_attempt_at = ?,
+                    last_error = ?
+                WHERE id = ?
+                """,
+                (attempt_count, attempted_at, message, delivery_id),
+            )
+            status = "pending"
 
-        message = (error or "Notification delivery failed.").strip()
-        connection.execute(
-            """
-            UPDATE notification_outbox
-            SET
-                status = 'pending',
-                attempt_count = ?,
-                last_attempt_at = ?,
-                last_error = ?
-            WHERE id = ?
-            """,
-            (attempt_count, attempted_at, message, notification_id),
-        )
+        _refresh_notification_status(connection, notification_id)
         return {
-            "id": notification_id,
-            "status": "pending",
+            "id": delivery_id,
+            "notification_id": notification_id,
+            "channel": channel,
+            "status": status,
             "attempt_count": attempt_count,
-            "last_error": message,
         }
 
 
