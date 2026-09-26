@@ -279,6 +279,19 @@ def _ensure_question_columns(connection: sqlite3.Connection) -> None:
         connection.execute("ALTER TABLE questions ADD COLUMN answered_at TEXT")
 
 
+def _ensure_notification_outbox_columns(connection: sqlite3.Connection) -> None:
+    columns = {
+        row[1]
+        for row in connection.execute(
+            "PRAGMA table_info(notification_outbox)"
+        ).fetchall()
+    }
+    if "cancelled_at" not in columns:
+        connection.execute(
+            "ALTER TABLE notification_outbox ADD COLUMN cancelled_at TEXT"
+        )
+
+
 def connect_db() -> sqlite3.Connection:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(DB_PATH, timeout=5)
@@ -360,6 +373,7 @@ def connect_db() -> sqlite3.Connection:
         )
         """
     )
+    _ensure_notification_outbox_columns(connection)
     connection.commit()
     return connection
 
