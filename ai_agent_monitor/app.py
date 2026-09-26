@@ -489,7 +489,7 @@ def _enqueue_notification_event(
             created_at,
         ),
     )
-    if cursor.lastrowid:
+    if cursor.rowcount > 0 and cursor.lastrowid is not None:
         return int(cursor.lastrowid)
 
     row = connection.execute(
