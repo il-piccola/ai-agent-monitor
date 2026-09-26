@@ -252,7 +252,7 @@ Do not add broad automatic repair in the first implementation. Diagnosis and rep
 
 Success condition: healthy state is reported clearly, and deliberately introduced DB/runtime/remote inconsistencies are identified without destructive changes.
 
-## Phase 15: Durable notifications ✅
+## Phase 15: Durable notifications ✅ (multi-recipient email extension: implementation complete, N100 verification pending)
 
 Notify the human when attention is required without making an external messaging service the source of truth.
 
