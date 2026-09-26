@@ -1010,6 +1010,215 @@ def record_notification_delivery_attempt(
         }
 
 
+def _notification_dashboard_url() -> str | None:
+    try:
+        state = read_remote_state()
+    except (RuntimeError, OSError):
+        return None
+    if state is None:
+        return None
+    url = state.get("tailnet_url")
+    return url if isinstance(url, str) and url else None
+
+
+def _notification_text(payload: dict[str, object]) -> str:
+    project = payload.get("project")
+    project_name = (
+        project.get("name")
+        if isinstance(project, dict) and isinstance(project.get("name"), str)
+        else PROJECT_ROOT.name
+    )
+    question_id = payload.get("question_id")
+    question = payload.get("question")
+    lines = [
+        "AI Agent Monitor",
+        f"Project: {project_name}",
+        f"Question #{question_id}: {question}",
+    ]
+    dashboard_url = _notification_dashboard_url()
+    if dashboard_url:
+        lines.extend(["", f"Dashboard: {dashboard_url}"])
+    return "\n".join(lines)
+
+
+def _send_telegram_notification(payload: dict[str, object]) -> None:
+    config = read_notification_config()["telegram"]
+    if config.get("enabled") is not True:
+        raise RuntimeError("Telegram notifications are disabled.")
+
+    chat_id = config.get("chat_id")
+    if not isinstance(chat_id, str) or not chat_id:
+        raise RuntimeError("Telegram chat ID is not configured.")
+
+    token = os.environ.get(TELEGRAM_TOKEN_ENV)
+    if not token:
+        raise RuntimeError(f"{TELEGRAM_TOKEN_ENV} is not set.")
+
+    body = json.dumps(
+        {
+            "chat_id": chat_id,
+            "text": _notification_text(payload),
+        },
+        ensure_ascii=False,
+    ).encode("utf-8")
+    request = urllib.request.Request(
+        f"https://api.telegram.org/bot{token}/sendMessage",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            result = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        try:
+            error_payload = json.loads(exc.read().decode("utf-8"))
+            description = error_payload.get("description")
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            description = None
+        raise RuntimeError(
+            f"Telegram sendMessage failed: {description or f'HTTP {exc.code}'}"
+        ) from exc
+    except (OSError, urllib.error.URLError, json.JSONDecodeError) as exc:
+        raise RuntimeError("Telegram sendMessage failed.") from exc
+
+    if not isinstance(result, dict) or result.get("ok") is not True:
+        description = result.get("description") if isinstance(result, dict) else None
+        raise RuntimeError(
+            f"Telegram sendMessage failed: {description or 'unknown error'}"
+        )
+
+
+def _send_email_notification(payload: dict[str, object]) -> None:
+    config = read_notification_config()["email"]
+    if config.get("enabled") is not True:
+        raise RuntimeError("Email notifications are disabled.")
+
+    to_address = config.get("to")
+    from_address = config.get("from_address")
+    smtp_host = config.get("smtp_host")
+    smtp_port = config.get("smtp_port")
+    username = config.get("username")
+    security = config.get("security")
+
+    if not all(
+        [
+            isinstance(to_address, str) and to_address,
+            isinstance(from_address, str) and from_address,
+            isinstance(smtp_host, str) and smtp_host,
+            isinstance(smtp_port, int),
+            security in {"starttls", "ssl", "none"},
+        ]
+    ):
+        raise RuntimeError("Email notification settings are incomplete.")
+
+    password = os.environ.get(SMTP_PASSWORD_ENV) if username else None
+    if username and not password:
+        raise RuntimeError(f"{SMTP_PASSWORD_ENV} is not set.")
+
+    project = payload.get("project")
+    project_name = (
+        project.get("name")
+        if isinstance(project, dict) and isinstance(project.get("name"), str)
+        else PROJECT_ROOT.name
+    )
+    message = EmailMessage()
+    message["Subject"] = f"[AI Agent Monitor] {project_name} needs your answer"
+    message["From"] = from_address
+    message["To"] = to_address
+    message.set_content(_notification_text(payload))
+
+    context = ssl.create_default_context()
+    if security == "ssl":
+        smtp_class = smtplib.SMTP_SSL
+        with smtp_class(smtp_host, smtp_port, timeout=10, context=context) as client:
+            if username:
+                client.login(str(username), str(password))
+            client.send_message(message)
+        return
+
+    with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as client:
+        client.ehlo()
+        if security == "starttls":
+            client.starttls(context=context)
+            client.ehlo()
+        if username:
+            client.login(str(username), str(password))
+        client.send_message(message)
+
+
+def _pending_notification_jobs(limit: int = 20) -> list[dict[str, object]]:
+    with database_session() as connection:
+        rows = connection.execute(
+            """
+            SELECT
+                d.id,
+                d.channel,
+                o.payload_json
+            FROM notification_deliveries AS d
+            JOIN notification_outbox AS o ON o.id = d.notification_id
+            WHERE d.status = 'pending' AND o.status = 'pending'
+            ORDER BY d.id ASC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+
+    return [
+        {
+            "delivery_id": int(row[0]),
+            "channel": str(row[1]),
+            "payload": json.loads(row[2]),
+        }
+        for row in rows
+    ]
+
+
+def dispatch_pending_notifications(limit: int = 20) -> dict[str, int]:
+    attempted = 0
+    delivered = 0
+    failed = 0
+
+    for job in _pending_notification_jobs(limit):
+        attempted += 1
+        delivery_id = int(job["delivery_id"])
+        channel = str(job["channel"])
+        payload = job["payload"]
+        try:
+            if channel == "telegram":
+                _send_telegram_notification(payload)
+            elif channel == "email":
+                _send_email_notification(payload)
+            else:
+                raise RuntimeError(f"Unsupported notification channel: {channel}")
+        except Exception as exc:
+            record_notification_delivery_attempt(
+                delivery_id,
+                delivered=False,
+                error=str(exc),
+            )
+            failed += 1
+        else:
+            record_notification_delivery_attempt(delivery_id, delivered=True)
+            delivered += 1
+
+    return {
+        "attempted": attempted,
+        "delivered": delivered,
+        "failed": failed,
+    }
+
+
+def _notification_dispatch_loop(stop_event: threading.Event) -> None:
+    while not stop_event.wait(NOTIFICATION_POLL_SECONDS):
+        try:
+            dispatch_pending_notifications()
+        except Exception:
+            # Individual delivery failures are persisted by the dispatcher.
+            # Unexpected loop errors must not stop the dashboard server.
+            continue
+
+
 def ask_question(question: str) -> dict[str, object]:
     question = question.strip()
     if not question:
