@@ -7,8 +7,8 @@
 - Default branch: `main`
 - Formal release: `v1.0.0` published
 - Development package version: `1.1.0`
-- Completed phases: 1 through 13
-- Current phase: 14 implementation complete; N100 verification pending
+- Completed phases: 1 through 14
+- Current phase: Phase 14 verified on N100; Phase 15 not started
 
 ## v1.0 baseline
 
@@ -16,7 +16,7 @@ The formal `v1.0.0` tag and GitHub Release are published from the verified Phase
 
 The v1.0 gate includes the real Codex workflow with iPhone answering and transcript-independent continuation. See `PHASE13_VERIFICATION.md` and `RELEASE_NOTES_v1.0.0.md`.
 
-## Phase 14 implementation
+## Phase 14 verification
 
 Version `1.1.0` adds read-only project diagnostics through:
 
@@ -25,26 +25,24 @@ monitor doctor
 monitor doctor --json
 ```
 
-Implemented checks:
+N100 verification passed:
 
-- package version
-- project identity and runtime paths
-- SQLite readability through a read-only connection
-- SQLite `PRAGMA quick_check`
-- required monitor tables and columns
-- current-task/open-question summary without modifying the DB
-- Codex/generic onboarding consistency
-- malformed `AGENTS.md` managed markers
-- modified generated contract/skill warnings
-- saved remote state and project ownership
-- saved remote PID liveness
-- live backend project identity
-- Tailscale Serve mapping consistency
-- saved Windows startup state and startup files
-- runtime logs over 10 MiB
-- temporary runtime files left after interrupted writes
+- all 84 tests passed
+- installed CLI version `1.1.0` was confirmed through `uv tool list` and the doctor package check
+- human-readable and JSON doctor output both reported `OK` on healthy state
+- an empty disposable project remained without `.agent-monitor/monitor.db` before and after doctor; exit code was 0
+- a disposable stale remote-state PID was reported as `ERROR` with exit code 1
+- the synthetic `remote.json` remained present and unchanged, confirming doctor did not repair or delete the finding
+- production localhost 8765 and Tailscale HTTPS 9443 remained HTTP 200
+- existing Serve mappings 443→4174, 8443→5173, and 9443→8765 were unchanged
+- the `nashiri-core` monitor was stopped only for the CLI update and returned on the same 8766/9444 ports with both endpoints HTTP 200
+- no additional test server was started
 
-Safety properties:
+The first CLI reinstall attempt could not replace the uv tool environment while `nashiri-core` was actively using the old installation. Stopping only that project's monitor allowed the update, after which the project returned on the same ports. Treat this as a Windows update procedure note rather than a doctor defect.
+
+The CLI does not currently implement a global `--version` option. Version 1.1.0 was still independently visible through `uv tool list` and `monitor doctor`. A dedicated `--version` flag is a small CLI usability improvement, not a Phase 14 blocker.
+
+## Phase 14 safety properties verified
 
 - doctor does not initialize an absent database
 - doctor does not run monitor schema migrations
@@ -52,28 +50,17 @@ Safety properties:
 - doctor does not change Tailscale Serve
 - doctor does not delete stale state
 - doctor does not rewrite agent onboarding files
-- errors return exit code 1; warnings remain exit code 0
-- `--json` provides machine-readable output
-
-The standard-library test suite now contains 84 tests. CI passes on Windows and Ubuntu with Python 3.10 and 3.12.
-
-During CI, the first new Windows run exposed a test-only SQLite handle leak. The test now closes that connection explicitly; the corrected 4-environment matrix passes.
+- errors return exit code 1
+- healthy state returns exit code 0
+- `--json` provides machine-readable output consistent with human output
 
 ## Next task
 
-Verify Phase 14 on the N100 before beginning Phase 15.
+Phase 15 has not started.
 
-1. pull the latest `main`
-2. run the full test suite and confirm all 84 tests pass
-3. reinstall with `uv tool install --force .`
-4. confirm installed version `1.1.0`
-5. run `monitor doctor` in `ai-agent-monitor` and confirm the report is understandable and non-destructive
-6. run `monitor doctor --json` and confirm valid JSON with the same overall result
-7. run doctor in a disposable empty project and confirm it does not create `.agent-monitor/monitor.db`
-8. create at least one disposable inconsistency, such as an incomplete SQLite schema or stale remote-state PID, and confirm doctor reports an error without repairing/deleting it
-9. confirm the production backend 8765 and HTTPS 9443 remain HTTP 200 and existing Serve mappings are unchanged
+Before implementing notifications, define the durable notification event/outbox model and select exactly one first notification adapter. Keep SQLite as the authoritative question/answer store.
 
-Do not use the production project's real database as the deliberately broken test case.
+Do not add automatic agent resume in Phase 15; that remains Phase 16.
 
 ## Post-v1 roadmap
 
