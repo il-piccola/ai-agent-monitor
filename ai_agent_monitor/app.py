@@ -545,6 +545,7 @@ def read_notification_config() -> dict[str, object]:
 
 def write_notification_config(config: dict[str, object]) -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
+    _ensure_project_gitignore(DATA_DIR / ".gitignore")
     path = notification_config_path()
     temporary = path.with_suffix(".json.tmp")
     temporary.write_text(
