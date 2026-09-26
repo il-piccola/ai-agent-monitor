@@ -582,7 +582,7 @@ def default_notification_config() -> dict[str, object]:
         },
         "email": {
             "enabled": False,
-            "to": None,
+            "recipients": [],
             "from_address": None,
             "smtp_host": None,
             "smtp_port": 587,
@@ -609,6 +609,21 @@ def read_notification_config() -> dict[str, object]:
         value = stored.get(channel)
         if isinstance(value, dict):
             config[channel].update(value)
+
+    email = config["email"]
+    legacy_to = email.pop("to", None)
+    recipients = email.get("recipients")
+    if not isinstance(recipients, list):
+        recipients = []
+    recipients = [
+        value.strip()
+        for value in recipients
+        if isinstance(value, str) and value.strip()
+    ]
+    if isinstance(legacy_to, str) and legacy_to.strip():
+        if legacy_to.strip() not in recipients:
+            recipients.insert(0, legacy_to.strip())
+    email["recipients"] = recipients
     return config
 
 
@@ -635,21 +650,64 @@ def configure_telegram(chat_id: str) -> dict[str, object]:
     return telegram
 
 
+def _normalize_email_address(address: str) -> str:
+    value = address.strip()
+    if not value or "\n" in value or "\r" in value:
+        raise ValueError("Email address must not be empty or contain newlines.")
+    parsed = parseaddr(value)[1]
+    if (
+        not parsed
+        or "@" not in parsed
+        or parsed.startswith("@")
+        or parsed.endswith("@")
+        or any(character.isspace() for character in parsed)
+    ):
+        raise ValueError(f"Invalid email address: {address}")
+    return parsed
+
+
+def _normalize_email_recipients(addresses: list[str]) -> list[str]:
+    recipients: list[str] = []
+    seen: set[str] = set()
+    for address in addresses:
+        normalized = _normalize_email_address(address)
+        key = normalized.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        recipients.append(normalized)
+    return recipients
+
+
+def email_recipients() -> list[str]:
+    config = read_notification_config()["email"]
+    recipients = config.get("recipients")
+    if not isinstance(recipients, list):
+        return []
+    return _normalize_email_recipients(
+        [value for value in recipients if isinstance(value, str)]
+    )
+
+
 def configure_email(
     *,
-    to_address: str,
+    to_address: str | None = None,
+    to_addresses: list[str] | None = None,
     from_address: str,
     smtp_host: str,
     smtp_port: int,
     username: str | None,
     security: str,
 ) -> dict[str, object]:
-    to_address = to_address.strip()
-    from_address = from_address.strip()
+    requested = list(to_addresses or [])
+    if to_address:
+        requested.append(to_address)
+    recipients = _normalize_email_recipients(requested)
+    from_address = _normalize_email_address(from_address)
     smtp_host = smtp_host.strip()
     username = username.strip() if username else None
-    if not to_address or not from_address or not smtp_host:
-        raise ValueError("Email recipient, sender and SMTP host are required.")
+    if not recipients or not from_address or not smtp_host:
+        raise ValueError("At least one email recipient, sender and SMTP host are required.")
     if smtp_port < 1 or smtp_port > 65535:
         raise ValueError("SMTP port must be between 1 and 65535.")
     if security not in {"starttls", "ssl", "none"}:
@@ -659,7 +717,7 @@ def configure_email(
     email = config["email"]
     email.update(
         {
-            "to": to_address,
+            "recipients": recipients,
             "from_address": from_address,
             "smtp_host": smtp_host,
             "smtp_port": smtp_port,
@@ -669,6 +727,65 @@ def configure_email(
     )
     write_notification_config(config)
     return email
+
+
+def add_email_recipients(addresses: list[str]) -> list[str]:
+    additions = _normalize_email_recipients(addresses)
+    config = read_notification_config()
+    email = config["email"]
+    existing = email_recipients()
+    recipients = _normalize_email_recipients(existing + additions)
+    email["recipients"] = recipients
+    write_notification_config(config)
+    return recipients
+
+
+def remove_email_recipients(addresses: list[str]) -> list[str]:
+    removals = {
+        address.casefold()
+        for address in _normalize_email_recipients(addresses)
+    }
+    config = read_notification_config()
+    email = config["email"]
+    recipients = [
+        address
+        for address in email_recipients()
+        if address.casefold() not in removals
+    ]
+    email["recipients"] = recipients
+    if not recipients:
+        email["enabled"] = False
+    write_notification_config(config)
+
+    if DB_PATH.is_file():
+        cancelled_at = utc_now()
+        with database_session() as connection:
+            notification_ids = [
+                int(row[0])
+                for row in connection.execute(
+                    """
+                    SELECT DISTINCT notification_id
+                    FROM notification_deliveries
+                    WHERE channel = 'email' AND status = 'pending'
+                    AND lower(target) IN ({})
+                    """.format(",".join("?" for _ in removals)),
+                    tuple(removals),
+                ).fetchall()
+            ] if removals else []
+            if removals:
+                connection.execute(
+                    """
+                    UPDATE notification_deliveries
+                    SET status = 'cancelled', cancelled_at = ?
+                    WHERE channel = 'email' AND status = 'pending'
+                    AND lower(target) IN ({})
+                    """.format(",".join("?" for _ in removals)),
+                    (cancelled_at, *removals),
+                )
+            for notification_id in notification_ids:
+                _refresh_notification_status(connection, notification_id)
+
+    return recipients
 
 
 def set_notification_channel_enabled(channel: str, enabled: bool) -> dict[str, object]:
@@ -686,8 +803,11 @@ def set_notification_channel_enabled(channel: str, enabled: bool) -> dict[str, o
                     f"Set {TELEGRAM_TOKEN_ENV} before enabling Telegram."
                 )
         else:
-            required = ("to", "from_address", "smtp_host", "smtp_port")
-            if any(not settings.get(key) for key in required):
+            required = ("from_address", "smtp_host", "smtp_port")
+            if (
+                not email_recipients()
+                or any(not settings.get(key) for key in required)
+            ):
                 raise RuntimeError("Configure email SMTP settings before enabling email.")
             if settings.get("username") and not os.environ.get(SMTP_PASSWORD_ENV):
                 raise RuntimeError(
