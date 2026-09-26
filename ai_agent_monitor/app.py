@@ -757,32 +757,31 @@ def remove_email_recipients(addresses: list[str]) -> list[str]:
         email["enabled"] = False
     write_notification_config(config)
 
-    if DB_PATH.is_file():
+    if DB_PATH.is_file() and removals:
         cancelled_at = utc_now()
         with database_session() as connection:
-            notification_ids = [
-                int(row[0])
-                for row in connection.execute(
-                    """
-                    SELECT DISTINCT notification_id
-                    FROM notification_deliveries
-                    WHERE channel = 'email' AND status = 'pending'
-                    AND lower(target) IN ({})
-                    """.format(",".join("?" for _ in removals)),
-                    tuple(removals),
-                ).fetchall()
-            ] if removals else []
-            if removals:
+            pending = connection.execute(
+                """
+                SELECT id, notification_id, target
+                FROM notification_deliveries
+                WHERE channel = 'email' AND status = 'pending'
+                """
+            ).fetchall()
+            matching = [
+                (int(row[0]), int(row[1]))
+                for row in pending
+                if str(row[2]).casefold() in removals
+            ]
+            for delivery_id, _ in matching:
                 connection.execute(
                     """
                     UPDATE notification_deliveries
                     SET status = 'cancelled', cancelled_at = ?
-                    WHERE channel = 'email' AND status = 'pending'
-                    AND lower(target) IN ({})
-                    """.format(",".join("?" for _ in removals)),
-                    (cancelled_at, *removals),
+                    WHERE id = ?
+                    """,
+                    (cancelled_at, delivery_id),
                 )
-            for notification_id in notification_ids:
+            for notification_id in sorted({item[1] for item in matching}):
                 _refresh_notification_status(connection, notification_id)
 
     return recipients
@@ -1108,7 +1107,7 @@ def _refresh_notification_status(
 ) -> None:
     rows = connection.execute(
         """
-        SELECT channel, status, attempt_count, last_attempt_at, delivered_at, last_error
+        SELECT channel, target, status, attempt_count, last_attempt_at, delivered_at, last_error
         FROM notification_deliveries
         WHERE notification_id = ?
         """,
@@ -1117,11 +1116,15 @@ def _refresh_notification_status(
     if not rows:
         return
 
-    statuses = {row[1] for row in rows}
-    attempt_count = sum(int(row[2]) for row in rows)
-    last_attempts = [row[3] for row in rows if row[3]]
-    delivered_times = [row[4] for row in rows if row[4]]
-    errors = [f"{row[0]}: {row[5]}" for row in rows if row[5]]
+    statuses = {row[2] for row in rows}
+    attempt_count = sum(int(row[3]) for row in rows)
+    last_attempts = [row[4] for row in rows if row[4]]
+    delivered_times = [row[5] for row in rows if row[5]]
+    errors = [
+        f"{row[0]}{f' ({row[1]})' if row[1] else ''}: {row[6]}"
+        for row in rows
+        if row[6]
+    ]
 
     if "pending" in statuses:
         status = "pending"
