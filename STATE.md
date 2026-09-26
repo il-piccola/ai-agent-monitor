@@ -7,8 +7,8 @@
 - Default branch: `main`
 - Formal release: `v1.0.0` published
 - Development package version: `1.2.0`
-- Completed phases: 1 through 14
-- Current phase: Phase 15 implementation complete; N100/iPhone verification pending
+- Completed phases: 1 through 15
+- Current phase: Phase 15 verified on N100/iPhone; Phase 16 not started
 
 ## Phase 14 baseline
 
@@ -61,26 +61,44 @@ Runtime:
 
 The standard-library test suite now contains 103 tests. Unit coverage includes transaction rollback, event uniqueness, persistence, per-channel retry, stale-notification cancellation, retry backoff, Telegram request construction, SMTP STARTTLS delivery, secret non-persistence, and the email on/off behavior.
 
-## Phase 15 N100/iPhone verification progress
+## Phase 15 N100/iPhone verification
 
-Telegram primary notification delivery passed on the N100 and iPhone:
+Phase 15 passed real N100/iPhone verification.
+
+Telegram:
 
 - CLI 1.2.0 was installed
+- the bot token was read from the Windows user environment variable without being printed or written to project configuration
+- `monitor notify telegram discover` obtained the intended chat ID after the user messaged the bot
+- the iPhone received real Telegram notifications
+- successful Telegram delivery was recorded as delivered in the durable outbox
+
+Optional Gmail email:
+
+- Gmail SMTP used `smtp.gmail.com:587` with STARTTLS
+- the Gmail app password was read from `AI_AGENT_MONITOR_SMTP_PASSWORD` and was not stored in project configuration
+- Email OFF: only Telegram delivered
+- Email ON: Telegram and Gmail both delivered
+- Email OFF again: only Telegram delivered
+- the iPhone/Gmail client confirmed the expected messages in all three stages
+- Telegram remained enabled when email was disabled
+- no pending notification remained after the test
+
+Operational safety:
+
 - `nashiri-core` returned on the same 8766/9444 ports after the CLI update
 - production 8765/9443 and existing Tailscale Serve mappings remained unchanged
-- the bot token was read from the user environment variable without being printed or written to project configuration
-- after a second `/start`, `monitor notify telegram discover` obtained the intended chat ID
-- a disposable project sent `Phase 15 Telegram notification test`
-- Telegram API delivery succeeded
-- the durable outbox recorded the notification as `delivered`
-- the iPhone received the Telegram notification
-- email remained disabled during the Telegram test
-
-The Telegram bot is outbound notification only. Human answers continue to use the monitor dashboard.
+- no production notification configuration was changed during the disposable-project email test
+- repository code was not modified by the N100 verification
+- the Telegram bot remains outbound notification only; human answers continue through the monitor dashboard
 
 ## Next task
 
-Complete the optional email verification before marking Phase 15 complete. Keep Telegram enabled and verify that email configuration remains OFF until explicitly enabled, one real email can be delivered after enabling, and disabling email again does not disable Telegram.
+Phase 16 has not started.
+
+Before implementing automatic resume, define the runner lifecycle and persistence model. Keep human answers, resume requests, resume attempts, and runner state as separate records. The first runner adapter should target the verified Codex workflow.
+
+Do not automatically launch or resume Codex until duplicate-resume prevention, completed-task handling, missing-runner handling, and restart recovery have explicit tests.
 
 Telegram setup must be performed without committing or pasting the bot token into repository files. Create the bot in Telegram, send the bot a message from the target iPhone account, set `AI_AGENT_MONITOR_TELEGRAM_BOT_TOKEN` as a user environment variable on the N100, discover/configure the chat ID, and enable Telegram.
 
