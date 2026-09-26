@@ -302,3 +302,16 @@ External adapter credentials must stay outside committed files and outbox payloa
 The monitor server polls pending notification deliveries every five seconds. A failed automatic delivery is eligible for retry after one minute; `monitor notify send` can force an immediate retry. This avoids hammering a broken network or missing credential while preserving manual recovery.
 
 `.agent-monitor/notifications.json` is project-local and ignored by Git. It contains no bot token or SMTP password.
+
+
+### Email recipient fan-out
+
+Version 1.2.1 extends the Phase 15 email adapter from one recipient to an arbitrary recipient list.
+
+The project-local email configuration stores `recipients` as a list. The previous single `to` field is read as a one-item recipient list for backward compatibility.
+
+Each email recipient becomes its own `notification_deliveries` row using the delivery `target` field. A message is sent separately to each target rather than exposing all addresses in one `To` header. If one recipient fails after another succeeds, retry targets only the failed address.
+
+The delivery-table migration converts the previous `UNIQUE(notification_id, channel)` layout to `UNIQUE(notification_id, channel, target)`. Existing single-recipient email deliveries inherit the configured legacy address when it can be determined.
+
+Removing a recipient cancels only that recipient's pending deliveries. Removing the last recipient also disables email notifications. Adding or removing recipients affects future notification events; already-created events retain their snapshotted delivery targets except that explicitly removed pending targets are cancelled.
