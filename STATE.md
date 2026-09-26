@@ -8,7 +8,7 @@
 - Completed phases: 1 through 13
 - Package version: `1.0.0`
 - Phase 13 real-agent verification: complete
-- Formal Git tag / GitHub Release: preparation in progress
+- Formal Git tag / GitHub Release: `v1.0.0` published
 
 ## v1.0 verification
 
@@ -57,18 +57,13 @@ The original monitor deployment remains separate from project-specific remotes.
 - production tailnet URL: `https://leto.taile04360.ts.net:9443/`
 - production automatic startup is not configured
 
-## Release preparation
+## Formal v1.0.0 release
 
-`RELEASE_NOTES_v1.0.0.md` contains the proposed formal release notes.
+The annotated `v1.0.0` tag and GitHub Release are published. The tagged release commit passed the release gate, and the working tree was confirmed clean during publication.
 
-Before publishing:
+`RELEASE_NOTES_v1.0.0.md` contains the release notes.
 
-1. let CI pass on the final release-preparation commit
-2. create tag `v1.0.0` at that commit
-3. create the GitHub Release using the prepared notes
-4. verify the published tag and release
-
-No functional changes should be added between final CI verification and tagging.
+Phase 14 has not started.
 
 ## Post-v1 roadmap
 
