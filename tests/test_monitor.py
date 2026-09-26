@@ -983,6 +983,117 @@ class AgentOnboardingTests(MonitorStorageTestCase):
         )
 
 
+class NotificationOutboxTests(MonitorStorageTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.project_root_patch = patch.object(monitor, "PROJECT_ROOT", self.root)
+        self.project_root_patch.start()
+
+    def tearDown(self) -> None:
+        self.project_root_patch.stop()
+        super().tearDown()
+
+    def test_question_creation_enqueues_one_durable_notification(self) -> None:
+        question = monitor.ask_question("Which option should I use?")
+
+        events = monitor.list_notification_outbox()
+
+        self.assertEqual(len(events), 1)
+        event = events[0]
+        self.assertEqual(event["event_type"], "question.created")
+        self.assertEqual(event["entity_type"], "question")
+        self.assertEqual(event["entity_id"], question["id"])
+        self.assertEqual(event["status"], "pending")
+        self.assertEqual(event["attempt_count"], 0)
+        self.assertEqual(event["payload"]["question"], question["question"])
+        self.assertEqual(event["payload"]["project"]["project_id"], monitor.project_id())
+
+    def test_question_and_notification_are_one_transaction(self) -> None:
+        with patch.object(
+            monitor,
+            "_enqueue_notification_event",
+            side_effect=RuntimeError("outbox unavailable"),
+        ):
+            with self.assertRaises(RuntimeError):
+                monitor.ask_question("Should roll back?")
+
+        self.assertEqual(monitor.list_open_questions(), [])
+        self.assertEqual(monitor.list_notification_outbox(), [])
+
+    def test_logical_question_event_is_unique(self) -> None:
+        question = monitor.ask_question("Only once?")
+        event = monitor.list_notification_outbox()[0]
+
+        with monitor.database_session() as connection:
+            duplicate_id = monitor._enqueue_notification_event(
+                connection,
+                event_type="question.created",
+                entity_type="question",
+                entity_id=question["id"],
+                payload=event["payload"],
+                created_at=question["created_at"],
+            )
+
+        self.assertEqual(duplicate_id, event["id"])
+        self.assertEqual(len(monitor.list_notification_outbox()), 1)
+
+    def test_failed_delivery_stays_pending_and_records_error(self) -> None:
+        monitor.ask_question("Retry me")
+        event = monitor.list_notification_outbox()[0]
+
+        result = monitor.record_notification_attempt(
+            event["id"],
+            delivered=False,
+            error="network unavailable",
+        )
+
+        self.assertEqual(result["status"], "pending")
+        stored = monitor.list_notification_outbox(status="pending")[0]
+        self.assertEqual(stored["attempt_count"], 1)
+        self.assertEqual(stored["last_error"], "network unavailable")
+        self.assertIsNotNone(stored["last_attempt_at"])
+        self.assertIsNone(stored["delivered_at"])
+
+    def test_successful_delivery_is_recorded_and_not_recounted(self) -> None:
+        monitor.ask_question("Deliver me")
+        event = monitor.list_notification_outbox()[0]
+
+        first = monitor.record_notification_attempt(event["id"], delivered=True)
+        second = monitor.record_notification_attempt(event["id"], delivered=True)
+
+        self.assertEqual(first["status"], "delivered")
+        self.assertEqual(second["status"], "delivered")
+        stored = monitor.list_notification_outbox(status="delivered")[0]
+        self.assertEqual(stored["attempt_count"], 1)
+        self.assertIsNotNone(stored["delivered_at"])
+        self.assertIsNone(stored["last_error"])
+
+    def test_pending_event_survives_new_database_connection(self) -> None:
+        monitor.ask_question("Persist me")
+
+        first = monitor.list_notification_outbox(status="pending")
+        second = monitor.list_notification_outbox(status="pending")
+
+        self.assertEqual(first, second)
+        self.assertEqual(len(second), 1)
+
+    def test_notifications_cli_outputs_json_and_filters_status(self) -> None:
+        monitor.ask_question("CLI event")
+        event = monitor.list_notification_outbox()[0]
+        monitor.record_notification_attempt(event["id"], delivered=True)
+        output = io.StringIO()
+
+        with (
+            patch.object(sys, "argv", ["monitor", "notifications", "--status", "delivered"]),
+            redirect_stdout(output),
+        ):
+            monitor.main()
+
+        payload = json.loads(output.getvalue())
+        self.assertEqual(len(payload["notifications"]), 1)
+        self.assertEqual(payload["notifications"][0]["status"], "delivered")
+
+
 class DoctorTests(MonitorStorageTestCase):
     def setUp(self) -> None:
         super().setUp()
