@@ -1321,12 +1321,22 @@ def _send_telegram_notification(payload: dict[str, object]) -> None:
         )
 
 
-def _send_email_notification(payload: dict[str, object]) -> None:
+def _send_email_notification(
+    payload: dict[str, object],
+    recipient: str | None = None,
+) -> None:
     config = read_notification_config()["email"]
     if config.get("enabled") is not True:
         raise RuntimeError("Email notifications are disabled.")
 
-    to_address = config.get("to")
+    recipients = email_recipients()
+    if recipient is None:
+        if len(recipients) != 1:
+            raise RuntimeError(
+                "Email delivery target is required when multiple recipients are configured."
+            )
+        recipient = recipients[0]
+    recipient = _normalize_email_address(recipient)
     from_address = config.get("from_address")
     smtp_host = config.get("smtp_host")
     smtp_port = config.get("smtp_port")
@@ -1335,7 +1345,7 @@ def _send_email_notification(payload: dict[str, object]) -> None:
 
     if not all(
         [
-            isinstance(to_address, str) and to_address,
+            recipient,
             isinstance(from_address, str) and from_address,
             isinstance(smtp_host, str) and smtp_host,
             isinstance(smtp_port, int),
@@ -1357,7 +1367,7 @@ def _send_email_notification(payload: dict[str, object]) -> None:
     message = EmailMessage()
     message["Subject"] = f"[AI Agent Monitor] {project_name} needs your answer"
     message["From"] = from_address
-    message["To"] = to_address
+    message["To"] = recipient
     message.set_content(_notification_text(payload))
 
     context = ssl.create_default_context()
@@ -1390,6 +1400,7 @@ def _pending_notification_jobs(
             SELECT
                 d.id,
                 d.channel,
+                d.target,
                 d.last_attempt_at,
                 o.payload_json
             FROM notification_deliveries AS d
@@ -1404,7 +1415,7 @@ def _pending_notification_jobs(
     now = datetime.now(timezone.utc)
     jobs: list[dict[str, object]] = []
     for row in rows:
-        last_attempt_at = row[2]
+        last_attempt_at = row[3]
         if not force and isinstance(last_attempt_at, str) and last_attempt_at:
             try:
                 last_attempt = datetime.fromisoformat(
@@ -1422,7 +1433,8 @@ def _pending_notification_jobs(
             {
                 "delivery_id": int(row[0]),
                 "channel": str(row[1]),
-                "payload": json.loads(row[3]),
+                "target": str(row[2]),
+                "payload": json.loads(row[4]),
             }
         )
         if len(jobs) >= limit:
@@ -1444,12 +1456,13 @@ def dispatch_pending_notifications(
         attempted += 1
         delivery_id = int(job["delivery_id"])
         channel = str(job["channel"])
+        target = str(job["target"])
         payload = job["payload"]
         try:
             if channel == "telegram":
                 _send_telegram_notification(payload)
             elif channel == "email":
-                _send_email_notification(payload)
+                _send_email_notification(payload, target)
             else:
                 raise RuntimeError(f"Unsupported notification channel: {channel}")
         except Exception as exc:
