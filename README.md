@@ -4,6 +4,12 @@ A small local monitor for long-running AI agent work.
 
 The goal is to let a human see, at a glance, what an AI agent is doing without reading its full logs. It provides a reusable local dashboard and CLI that other projects and CLI-capable AI agents can call.
 
+## Release
+
+The first formal release is `v1.0.0`. It passed the real Codex workflow gate, including transcript-independent continuation after an iPhone dashboard answer.
+
+See `RELEASE_NOTES_v1.0.0.md` for capabilities and known limits.
+
 ## Current status
 
 Phases 1 through 10 are verified on the N100. This includes Phase 9 tailnet-only smartphone access and Phase 10 per-user Windows logon startup for a test project.
