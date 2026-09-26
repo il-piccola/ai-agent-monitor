@@ -2986,7 +2986,12 @@ def _doctor_notifications() -> dict[str, object]:
             problems.append(f"Telegram is enabled but {TELEGRAM_TOKEN_ENV} is not set.")
 
     if email.get("enabled") is True:
-        if not email_recipients():
+        try:
+            recipients = email_recipients()
+        except ValueError as exc:
+            recipients = []
+            problems.append(f"Email recipient configuration is invalid: {exc}")
+        if not recipients:
             problems.append("Email is enabled but no recipients are configured.")
         for key in ("from_address", "smtp_host", "smtp_port"):
             if not email.get(key):
