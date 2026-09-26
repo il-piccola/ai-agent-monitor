@@ -61,9 +61,26 @@ Runtime:
 
 The standard-library test suite now contains 103 tests. Unit coverage includes transaction rollback, event uniqueness, persistence, per-channel retry, stale-notification cancellation, retry backoff, Telegram request construction, SMTP STARTTLS delivery, secret non-persistence, and the email on/off behavior.
 
+## Phase 15 N100/iPhone verification progress
+
+Telegram primary notification delivery passed on the N100 and iPhone:
+
+- CLI 1.2.0 was installed
+- `nashiri-core` returned on the same 8766/9444 ports after the CLI update
+- production 8765/9443 and existing Tailscale Serve mappings remained unchanged
+- the bot token was read from the user environment variable without being printed or written to project configuration
+- after a second `/start`, `monitor notify telegram discover` obtained the intended chat ID
+- a disposable project sent `Phase 15 Telegram notification test`
+- Telegram API delivery succeeded
+- the durable outbox recorded the notification as `delivered`
+- the iPhone received the Telegram notification
+- email remained disabled during the Telegram test
+
+The Telegram bot is outbound notification only. Human answers continue to use the monitor dashboard.
+
 ## Next task
 
-Verify Phase 15 on the N100 and iPhone before beginning Phase 16.
+Complete the optional email verification before marking Phase 15 complete. Keep Telegram enabled and verify that email configuration remains OFF until explicitly enabled, one real email can be delivered after enabling, and disabling email again does not disable Telegram.
 
 Telegram setup must be performed without committing or pasting the bot token into repository files. Create the bot in Telegram, send the bot a message from the target iPhone account, set `AI_AGENT_MONITOR_TELEGRAM_BOT_TOKEN` as a user environment variable on the N100, discover/configure the chat ID, and enable Telegram.
 
