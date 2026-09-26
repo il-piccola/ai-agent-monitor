@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from contextlib import closing, redirect_stdout
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import ai_agent_monitor.app as monitor
 
@@ -1214,6 +1214,61 @@ class NotificationOutboxTests(MonitorStorageTestCase):
         telegram_again.assert_not_called()
         email_again.assert_called_once()
         self.assertEqual(monitor.list_notification_outbox()[0]["status"], "delivered")
+
+    def test_telegram_transport_posts_chat_id_and_question(self) -> None:
+        response = MagicMock()
+        response.__enter__.return_value.read.return_value = b'{"ok":true,"result":{}}'
+        payload = {
+            "project": {"project_id": "abc", "name": "demo"},
+            "question_id": 7,
+            "question": "Choose A or B?",
+        }
+
+        with patch.object(
+            monitor.urllib.request,
+            "urlopen",
+            return_value=response,
+        ) as urlopen:
+            monitor._send_telegram_notification(payload)
+
+        request = urlopen.call_args.args[0]
+        body = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(body["chat_id"], "123456")
+        self.assertIn("Question #7: Choose A or B?", body["text"])
+        self.assertIn("test-token", request.full_url)
+
+    def test_email_transport_uses_starttls_and_send_message(self) -> None:
+        monitor.configure_email(
+            to_address="to@example.com",
+            from_address="from@example.com",
+            smtp_host="smtp.example.com",
+            smtp_port=587,
+            username=None,
+            security="starttls",
+        )
+        monitor.set_notification_channel_enabled("email", True)
+        client = MagicMock()
+        smtp = MagicMock()
+        smtp.return_value.__enter__.return_value = client
+        payload = {
+            "project": {"project_id": "abc", "name": "demo"},
+            "question_id": 8,
+            "question": "Approve this?",
+        }
+
+        with patch.object(monitor.smtplib, "SMTP", smtp):
+            monitor._send_email_notification(payload)
+
+        smtp.assert_called_once()
+        client.starttls.assert_called_once()
+        client.send_message.assert_called_once()
+        message = client.send_message.call_args.args[0]
+        self.assertEqual(message["To"], "to@example.com")
+        self.assertIn("demo needs your answer", message["Subject"])
+
+    def test_notification_config_is_ignored_by_project_gitignore(self) -> None:
+        ignore_text = (monitor.DATA_DIR / ".gitignore").read_text(encoding="utf-8")
+        self.assertIn("notifications.json", ignore_text.splitlines())
 
     def test_telegram_config_does_not_store_token(self) -> None:
         config_text = monitor.notification_config_path().read_text(encoding="utf-8")
