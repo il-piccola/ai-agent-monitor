@@ -286,10 +286,19 @@ Phase 15 keeps notification delivery separate from the authoritative question/an
 
 When `monitor ask` creates a question, the same SQLite transaction creates one `question.created` outbox event. The logical event is unique by `event_type + entity_type + entity_id`, preventing repeated application logic from creating multiple logical notifications for the same question.
 
-Outbox records store the event payload and delivery state but no external-service secret. Delivery attempts update attempt count, last-attempt time, and last error. Successful delivery records a delivered timestamp.
+Outbox records store the logical event but no external-service secret. A separate `notification_deliveries` table stores one row for each channel that was enabled when the event was created. Telegram and optional email therefore have independent pending/delivered/cancelled state, attempt count, last-attempt time, delivered time, and last error.
 
-If the human answers a question while its notification is still pending, the same answer transaction changes that outbox record to `cancelled`. This prevents a delayed notifier from sending a stale question after it has already been resolved.
+Telegram uses the Bot API `sendMessage` method. The bot token comes from `AI_AGENT_MONITOR_TELEGRAM_BOT_TOKEN`; the project-local config stores only the chat ID and enabled state.
+
+Email uses Python's SMTP client. Recipient, sender, SMTP host/port, username, security mode, and enabled state are project-local non-secret configuration. An SMTP password, when needed, comes from `AI_AGENT_MONITOR_SMTP_PASSWORD`. Email defaults to off and can be enabled or disabled independently.
+
+If the human answers a question while channel deliveries are still pending, the same answer transaction cancels only those pending channel rows. If no channel delivered, the logical event becomes cancelled. If Telegram already delivered while email is still pending, the email row is cancelled and the logical event remains delivered. This prevents stale delayed notifications without erasing successful delivery history.
 
 The outbox is durable across process restarts. It provides at-least-once delivery attempts at the transport boundary; a process failure after a remote service accepts a message but before the local delivered update may still produce a duplicate transport message unless that service provides an idempotency mechanism. The database uniqueness rule prevents duplicate logical outbox events but does not claim network-level exactly-once delivery.
 
 External adapter credentials must stay outside committed files and outbox payloads.
+
+
+The monitor server polls pending notification deliveries every five seconds. A failed automatic delivery is eligible for retry after one minute; `monitor notify send` can force an immediate retry. This avoids hammering a broken network or missing credential while preserving manual recovery.
+
+`.agent-monitor/notifications.json` is project-local and ignored by Git. It contains no bot token or SMTP password.
