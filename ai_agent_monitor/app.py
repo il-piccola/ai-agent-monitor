@@ -354,6 +354,7 @@ def connect_db() -> sqlite3.Connection:
             created_at TEXT NOT NULL,
             last_attempt_at TEXT,
             delivered_at TEXT,
+            cancelled_at TEXT,
             last_error TEXT,
             UNIQUE(event_type, entity_type, entity_id)
         )
@@ -512,8 +513,10 @@ def list_notification_outbox(
 ) -> list[dict[str, object]]:
     if limit < 1:
         raise ValueError("Notification limit must be at least 1.")
-    if status is not None and status not in {"pending", "delivered"}:
-        raise ValueError("Notification status must be 'pending' or 'delivered'.")
+    if status is not None and status not in {"pending", "delivered", "cancelled"}:
+        raise ValueError(
+            "Notification status must be 'pending', 'delivered' or 'cancelled'."
+        )
 
     query = """
         SELECT
@@ -527,6 +530,7 @@ def list_notification_outbox(
             created_at,
             last_attempt_at,
             delivered_at,
+            cancelled_at,
             last_error
         FROM notification_outbox
     """
@@ -552,7 +556,8 @@ def list_notification_outbox(
             "created_at": row[7],
             "last_attempt_at": row[8],
             "delivered_at": row[9],
-            "last_error": row[10],
+            "cancelled_at": row[10],
+            "last_error": row[11],
         }
         for row in rows
     ]
@@ -577,10 +582,10 @@ def record_notification_attempt(
         if row is None:
             raise ValueError(f"Notification {notification_id} does not exist.")
 
-        if row[0] == "delivered":
+        if row[0] in {"delivered", "cancelled"}:
             existing = connection.execute(
                 """
-                SELECT delivered_at
+                SELECT delivered_at, cancelled_at
                 FROM notification_outbox
                 WHERE id = ?
                 """,
@@ -588,9 +593,10 @@ def record_notification_attempt(
             ).fetchone()
             return {
                 "id": notification_id,
-                "status": "delivered",
+                "status": row[0],
                 "attempt_count": int(row[1]),
                 "delivered_at": existing[0] if existing else None,
+                "cancelled_at": existing[1] if existing else None,
             }
 
         attempt_count = int(row[1]) + 1
@@ -719,6 +725,18 @@ def answer_question(question_id: int, answer: str) -> dict[str, object]:
             WHERE id = ?
             """,
             (answer, answered_at, question_id),
+        )
+        connection.execute(
+            """
+            UPDATE notification_outbox
+            SET status = 'cancelled', cancelled_at = ?
+            WHERE
+                event_type = 'question.created'
+                AND entity_type = 'question'
+                AND entity_id = ?
+                AND status = 'pending'
+            """,
+            (answered_at, question_id),
         )
 
     return {
@@ -2400,7 +2418,7 @@ def parse_notifications_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--status",
-        choices=("pending", "delivered"),
+        choices=("pending", "delivered", "cancelled"),
         help="Filter notification events by delivery status.",
     )
     parser.add_argument(
