@@ -573,17 +573,40 @@ monitor notify telegram off
 
 ### Optional email
 
-Configure SMTP without storing the SMTP password in the project:
+Configure SMTP without storing the SMTP password in the project. The notification recipient can be different from the SMTP account:
 
 ```bash
 monitor notify email set \
-  --to you@example.com \
+  --to first@example.com \
   --from-address monitor@example.com \
   --smtp-host smtp.example.com \
   --smtp-port 587 \
   --username monitor@example.com \
   --security starttls
 ```
+
+Repeat `--to` to configure multiple recipients at once:
+
+```bash
+monitor notify email set \
+  --to first@example.com \
+  --to second@example.net \
+  --from-address monitor@example.com \
+  --smtp-host smtp.example.com \
+  --smtp-port 587 \
+  --username monitor@example.com \
+  --security starttls
+```
+
+Recipients can also be managed without re-entering the SMTP settings:
+
+```bash
+monitor notify email recipient add third@example.org
+monitor notify email recipient remove second@example.net
+monitor notify email recipient list
+```
+
+Each recipient is sent a separate message. Recipient addresses are not exposed to the other recipients, and delivery/retry state is independent per address.
 
 When SMTP authentication is configured, the password is read from:
 
