@@ -983,5 +983,186 @@ class AgentOnboardingTests(MonitorStorageTestCase):
         )
 
 
+class DoctorTests(MonitorStorageTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.project_root_patch = patch.object(monitor, "PROJECT_ROOT", self.root)
+        self.project_root_patch.start()
+
+    def tearDown(self) -> None:
+        self.project_root_patch.stop()
+        super().tearDown()
+
+    def _check(self, report: dict[str, object], name: str) -> dict[str, object]:
+        return next(check for check in report["checks"] if check["name"] == name)
+
+    def test_doctor_on_uninitialized_project_is_ok_and_does_not_create_database(self) -> None:
+        report = monitor.doctor_snapshot()
+
+        self.assertEqual(report["overall"], "ok")
+        self.assertEqual(self._check(report, "database")["status"], "ok")
+        self.assertFalse(monitor.DB_PATH.exists())
+
+    def test_doctor_reads_healthy_database_without_changing_it(self) -> None:
+        monitor.record_progress("doctor test")
+        before = monitor.DB_PATH.read_bytes()
+
+        report = monitor.doctor_snapshot()
+
+        self.assertEqual(self._check(report, "database")["status"], "ok")
+        self.assertEqual(monitor.DB_PATH.read_bytes(), before)
+
+    def test_doctor_reports_corrupt_database(self) -> None:
+        monitor.DATA_DIR.mkdir(parents=True, exist_ok=True)
+        monitor.DB_PATH.write_bytes(b"not a sqlite database")
+
+        report = monitor.doctor_snapshot()
+
+        self.assertEqual(report["overall"], "error")
+        self.assertEqual(self._check(report, "database")["status"], "error")
+
+    def test_doctor_reports_incomplete_database_schema(self) -> None:
+        monitor.DATA_DIR.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(monitor.DB_PATH) as connection:
+            connection.execute(
+                "CREATE TABLE progress (id INTEGER PRIMARY KEY, message TEXT, created_at TEXT)"
+            )
+
+        report = monitor.doctor_snapshot()
+        database = self._check(report, "database")
+
+        self.assertEqual(database["status"], "error")
+        self.assertIn("current_task", database["details"]["missing_tables"])
+
+    def test_doctor_reports_invalid_agent_markers(self) -> None:
+        monitor.agents_file_path().write_text(
+            monitor.AGENTS_BLOCK_START + "\nmissing end\n",
+            encoding="utf-8",
+        )
+
+        report = monitor.doctor_snapshot()
+
+        self.assertEqual(report["overall"], "error")
+        self.assertEqual(self._check(report, "agent_integration")["status"], "error")
+
+    def test_doctor_warns_when_generated_contract_was_modified(self) -> None:
+        monitor.agent_contract_target().write_text("modified", encoding="utf-8")
+
+        report = monitor.doctor_snapshot()
+
+        self.assertEqual(report["overall"], "warning")
+        self.assertEqual(self._check(report, "agent_integration")["status"], "warning")
+
+    def test_doctor_reports_stale_remote_pid_without_changing_state(self) -> None:
+        state = {
+            "project_root": str(self.root),
+            "backend_port": 8766,
+            "https_port": 9444,
+            "pid": 1234,
+            "backend_url": "http://127.0.0.1:8766",
+            "tailnet_url": "https://host.example.ts.net:9444/",
+        }
+        monitor._write_remote_state(state)
+        before = monitor.remote_state_path().read_text(encoding="utf-8")
+
+        with (
+            patch.object(monitor, "_process_is_alive", return_value=False),
+            patch.object(monitor, "_tailscale_status_json", return_value={}),
+        ):
+            report = monitor.doctor_snapshot()
+
+        self.assertEqual(self._check(report, "remote")["status"], "error")
+        self.assertEqual(
+            monitor.remote_state_path().read_text(encoding="utf-8"),
+            before,
+        )
+
+    def test_doctor_accepts_matching_remote_backend_and_serve_mapping(self) -> None:
+        backend_url = "http://127.0.0.1:8766"
+        monitor._write_remote_state(
+            {
+                "project_root": str(self.root),
+                "backend_port": 8766,
+                "https_port": 9444,
+                "pid": 1234,
+                "backend_url": backend_url,
+                "tailnet_url": "https://host.example.ts.net:9444/",
+            }
+        )
+        serve_status = {
+            "Web": {
+                "host.example.ts.net:9444": {
+                    "Handlers": {"/": {"Proxy": backend_url}}
+                }
+            }
+        }
+
+        with (
+            patch.object(monitor, "_process_is_alive", return_value=True),
+            patch.object(monitor, "_project_server_matches", return_value=True),
+            patch.object(monitor, "_tailscale_status_json", return_value=serve_status),
+        ):
+            report = monitor.doctor_snapshot()
+
+        self.assertEqual(self._check(report, "remote")["status"], "ok")
+
+    def test_doctor_reports_missing_startup_files(self) -> None:
+        monitor._write_startup_state(
+            {
+                "project_root": str(self.root),
+                "project_id": monitor.project_id(),
+                "mode": "startup-folder",
+                "launcher_path": str(self.root / "missing.cmd"),
+                "script_path": str(self.root / "missing.ps1"),
+            }
+        )
+
+        report = monitor.doctor_snapshot()
+
+        self.assertEqual(self._check(report, "startup")["status"], "error")
+
+    def test_doctor_warns_about_large_logs_and_temporary_runtime_files(self) -> None:
+        runtime = monitor.remote_runtime_dir()
+        runtime.mkdir(parents=True, exist_ok=True)
+        with (runtime / "remote.stdout.log").open("wb") as handle:
+            handle.truncate(monitor.DOCTOR_LOG_WARNING_BYTES + 1)
+        (runtime / "remote.json.tmp").write_text("{}", encoding="utf-8")
+
+        report = monitor.doctor_snapshot()
+        runtime_check = self._check(report, "runtime")
+
+        self.assertEqual(report["overall"], "warning")
+        self.assertEqual(runtime_check["status"], "warning")
+        self.assertIn("remote.json.tmp", runtime_check["details"]["temporary_files"])
+
+    def test_doctor_json_cli_prints_machine_readable_report(self) -> None:
+        output = io.StringIO()
+
+        with (
+            patch.object(sys, "argv", ["monitor", "doctor", "--json"]),
+            redirect_stdout(output),
+        ):
+            monitor.main()
+
+        report = json.loads(output.getvalue())
+        self.assertEqual(report["schema_version"], 1)
+        self.assertEqual(report["overall"], "ok")
+
+    def test_doctor_cli_exits_nonzero_on_error(self) -> None:
+        monitor.DATA_DIR.mkdir(parents=True, exist_ok=True)
+        monitor.DB_PATH.write_bytes(b"broken")
+        output = io.StringIO()
+
+        with (
+            patch.object(sys, "argv", ["monitor", "doctor"]),
+            redirect_stdout(output),
+        ):
+            with self.assertRaises(SystemExit) as raised:
+                monitor.main()
+
+        self.assertEqual(raised.exception.code, 1)
+        self.assertIn("[ERROR] database", output.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()
