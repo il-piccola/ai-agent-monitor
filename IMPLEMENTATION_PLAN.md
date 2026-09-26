@@ -224,7 +224,7 @@ Work:
 
 Do not add functional changes while preparing the release.
 
-## Phase 14: Diagnostics and recovery
+## Phase 14: Diagnostics and recovery ← implementation complete, N100 verification pending
 
 Add read-only operational diagnosis before increasing automation.
 
