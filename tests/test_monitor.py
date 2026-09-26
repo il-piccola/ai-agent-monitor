@@ -988,8 +988,16 @@ class NotificationOutboxTests(MonitorStorageTestCase):
         super().setUp()
         self.project_root_patch = patch.object(monitor, "PROJECT_ROOT", self.root)
         self.project_root_patch.start()
+        self.notification_env_patch = patch.dict(
+            os.environ,
+            {monitor.TELEGRAM_TOKEN_ENV: "test-token"},
+        )
+        self.notification_env_patch.start()
+        monitor.configure_telegram("123456")
+        monitor.set_notification_channel_enabled("telegram", True)
 
     def tearDown(self) -> None:
+        self.notification_env_patch.stop()
         self.project_root_patch.stop()
         super().tearDown()
 
@@ -1007,6 +1015,10 @@ class NotificationOutboxTests(MonitorStorageTestCase):
         self.assertEqual(event["attempt_count"], 0)
         self.assertEqual(event["payload"]["question"], question["question"])
         self.assertEqual(event["payload"]["project"]["project_id"], monitor.project_id())
+        deliveries = monitor.list_notification_deliveries(notification_id=event["id"])
+        self.assertEqual(len(deliveries), 1)
+        self.assertEqual(deliveries[0]["channel"], "telegram")
+        self.assertEqual(deliveries[0]["status"], "pending")
 
     def test_question_and_notification_are_one_transaction(self) -> None:
         with patch.object(
@@ -1040,26 +1052,36 @@ class NotificationOutboxTests(MonitorStorageTestCase):
     def test_failed_delivery_stays_pending_and_records_error(self) -> None:
         monitor.ask_question("Retry me")
         event = monitor.list_notification_outbox()[0]
+        delivery = monitor.list_notification_deliveries(notification_id=event["id"])[0]
 
-        result = monitor.record_notification_attempt(
-            event["id"],
+        result = monitor.record_notification_delivery_attempt(
+            delivery["id"],
             delivered=False,
             error="network unavailable",
         )
 
         self.assertEqual(result["status"], "pending")
         stored = monitor.list_notification_outbox(status="pending")[0]
+        stored_delivery = monitor.list_notification_deliveries(
+            notification_id=event["id"]
+        )[0]
         self.assertEqual(stored["attempt_count"], 1)
-        self.assertEqual(stored["last_error"], "network unavailable")
+        self.assertIn("network unavailable", stored["last_error"])
+        self.assertEqual(stored_delivery["last_error"], "network unavailable")
         self.assertIsNotNone(stored["last_attempt_at"])
         self.assertIsNone(stored["delivered_at"])
 
     def test_successful_delivery_is_recorded_and_not_recounted(self) -> None:
         monitor.ask_question("Deliver me")
         event = monitor.list_notification_outbox()[0]
+        delivery = monitor.list_notification_deliveries(notification_id=event["id"])[0]
 
-        first = monitor.record_notification_attempt(event["id"], delivered=True)
-        second = monitor.record_notification_attempt(event["id"], delivered=True)
+        first = monitor.record_notification_delivery_attempt(
+            delivery["id"], delivered=True
+        )
+        second = monitor.record_notification_delivery_attempt(
+            delivery["id"], delivered=True
+        )
 
         self.assertEqual(first["status"], "delivered")
         self.assertEqual(second["status"], "delivered")
@@ -1092,7 +1114,8 @@ class NotificationOutboxTests(MonitorStorageTestCase):
     def test_answer_does_not_cancel_already_delivered_notification(self) -> None:
         question = monitor.ask_question("Already delivered?")
         event = monitor.list_notification_outbox()[0]
-        monitor.record_notification_attempt(event["id"], delivered=True)
+        delivery = monitor.list_notification_deliveries(notification_id=event["id"])[0]
+        monitor.record_notification_delivery_attempt(delivery["id"], delivered=True)
 
         monitor.answer_question(question["id"], "Yes")
 
@@ -1101,10 +1124,109 @@ class NotificationOutboxTests(MonitorStorageTestCase):
         self.assertEqual(delivered[0]["entity_id"], question["id"])
         self.assertIsNone(delivered[0]["cancelled_at"])
 
+    def test_email_is_optional_and_off_by_default(self) -> None:
+        monitor.configure_email(
+            to_address="to@example.com",
+            from_address="from@example.com",
+            smtp_host="smtp.example.com",
+            smtp_port=587,
+            username=None,
+            security="starttls",
+        )
+
+        monitor.ask_question("Telegram only")
+
+        deliveries = monitor.list_notification_deliveries()
+        self.assertEqual([item["channel"] for item in deliveries], ["telegram"])
+
+    def test_email_on_creates_independent_delivery(self) -> None:
+        monitor.configure_email(
+            to_address="to@example.com",
+            from_address="from@example.com",
+            smtp_host="smtp.example.com",
+            smtp_port=587,
+            username=None,
+            security="starttls",
+        )
+        monitor.set_notification_channel_enabled("email", True)
+
+        monitor.ask_question("Two channels")
+
+        deliveries = monitor.list_notification_deliveries()
+        self.assertEqual(
+            [item["channel"] for item in deliveries],
+            ["telegram", "email"],
+        )
+
+    def test_disabling_email_cancels_only_pending_email_delivery(self) -> None:
+        monitor.configure_email(
+            to_address="to@example.com",
+            from_address="from@example.com",
+            smtp_host="smtp.example.com",
+            smtp_port=587,
+            username=None,
+            security="starttls",
+        )
+        monitor.set_notification_channel_enabled("email", True)
+        monitor.ask_question("Disable email")
+
+        monitor.set_notification_channel_enabled("email", False)
+
+        deliveries = monitor.list_notification_deliveries()
+        statuses = {item["channel"]: item["status"] for item in deliveries}
+        self.assertEqual(statuses["telegram"], "pending")
+        self.assertEqual(statuses["email"], "cancelled")
+        self.assertEqual(monitor.list_notification_outbox()[0]["status"], "pending")
+
+    def test_dispatch_retries_only_failed_channel(self) -> None:
+        monitor.configure_email(
+            to_address="to@example.com",
+            from_address="from@example.com",
+            smtp_host="smtp.example.com",
+            smtp_port=587,
+            username=None,
+            security="starttls",
+        )
+        monitor.set_notification_channel_enabled("email", True)
+        monitor.ask_question("Retry email only")
+
+        with (
+            patch.object(monitor, "_send_telegram_notification") as telegram,
+            patch.object(
+                monitor,
+                "_send_email_notification",
+                side_effect=RuntimeError("smtp down"),
+            ) as email,
+        ):
+            first = monitor.dispatch_pending_notifications()
+
+        self.assertEqual(first, {"attempted": 2, "delivered": 1, "failed": 1})
+        telegram.assert_called_once()
+        email.assert_called_once()
+
+        with (
+            patch.object(monitor, "_send_telegram_notification") as telegram_again,
+            patch.object(monitor, "_send_email_notification") as email_again,
+        ):
+            second = monitor.dispatch_pending_notifications()
+
+        self.assertEqual(second, {"attempted": 1, "delivered": 1, "failed": 0})
+        telegram_again.assert_not_called()
+        email_again.assert_called_once()
+        self.assertEqual(monitor.list_notification_outbox()[0]["status"], "delivered")
+
+    def test_telegram_config_does_not_store_token(self) -> None:
+        config_text = monitor.notification_config_path().read_text(encoding="utf-8")
+        self.assertNotIn("test-token", config_text)
+        public = monitor.notification_config_public()
+        self.assertTrue(public["telegram"]["token_available"])
+        self.assertEqual(public["telegram"]["token_env"], monitor.TELEGRAM_TOKEN_ENV)
+
     def test_notifications_cli_outputs_json_and_filters_status(self) -> None:
         monitor.ask_question("CLI event")
         event = monitor.list_notification_outbox()[0]
-        monitor.record_notification_attempt(event["id"], delivered=True)
+        delivery = monitor.list_notification_deliveries(notification_id=event["id"])[0]
+        monitor.record_notification_delivery_attempt(delivery["id"], delivered=True)
         output = io.StringIO()
 
         with (
