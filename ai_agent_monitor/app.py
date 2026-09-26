@@ -1094,18 +1094,28 @@ def answer_question(question_id: int, answer: str) -> dict[str, object]:
             """,
             (answer, answered_at, question_id),
         )
-        connection.execute(
+        notification = connection.execute(
             """
-            UPDATE notification_outbox
-            SET status = 'cancelled', cancelled_at = ?
+            SELECT id
+            FROM notification_outbox
             WHERE
                 event_type = 'question.created'
                 AND entity_type = 'question'
                 AND entity_id = ?
-                AND status = 'pending'
             """,
-            (answered_at, question_id),
-        )
+            (question_id,),
+        ).fetchone()
+        if notification is not None:
+            notification_id = int(notification[0])
+            connection.execute(
+                """
+                UPDATE notification_deliveries
+                SET status = 'cancelled', cancelled_at = ?
+                WHERE notification_id = ? AND status = 'pending'
+                """,
+                (answered_at, notification_id),
+            )
+            _refresh_notification_status(connection, notification_id)
 
     return {
         "id": question_id,
