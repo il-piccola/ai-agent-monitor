@@ -5,71 +5,78 @@
 - Repository: `il-piccola/ai-agent-monitor`
 - Visibility: public
 - Default branch: `main`
+- Formal release: `v1.0.0` published
+- Development package version: `1.1.0`
 - Completed phases: 1 through 13
-- Package version: `1.0.0`
-- Phase 13 real-agent verification: complete
-- Formal Git tag / GitHub Release: `v1.0.0` published
+- Current phase: 14 implementation complete; N100 verification pending
 
-## v1.0 verification
+## v1.0 baseline
 
-The v1.0 gate passed in a real Codex project on the N100.
+The formal `v1.0.0` tag and GitHub Release are published from the verified Phase 13 baseline.
 
-Scenario A verified a normal task with no human decision:
+The v1.0 gate includes the real Codex workflow with iPhone answering and transcript-independent continuation. See `PHASE13_VERIFICATION.md` and `RELEASE_NOTES_v1.0.0.md`.
 
-- Codex discovered the monitor integration without monitor commands in the user prompt
-- Codex read monitor status, started and completed the task, recorded one meaningful progress event, ran project validation, and registered a reviewable artifact
-- no unnecessary human question was created
-- the human did not issue task/progress/ask commands on the agent's behalf
+## Phase 14 implementation
 
-Scenario A initially exposed a real onboarding defect: the Codex PowerShell did not have the uv tool bin directory on PATH. Version 0.12.1 added a documented executable-path fallback and regression tests; the repeated scenario passed.
+Version `1.1.0` adds read-only project diagnostics through:
 
-Scenario B verified a genuine human decision and independent continuation:
+```text
+monitor doctor
+monitor doctor --json
+```
 
-- the human answered from the monitor dashboard
-- an independent Codex execution with no inherited conversation history recovered the stored answer from monitor state
-- the selected answer was `A（短いエラーを保つ）`
-- Codex inspected the relevant script/tests, found that the selected behavior was already implemented, preserved it, ran the relevant verification successfully, recorded progress, and completed the task
-- the final monitor state had no current task and no unanswered question
-- no manual database edit or human-issued monitor task/progress/ask command was required
+Implemented checks:
 
-The detailed evidence is in `PHASE13_VERIFICATION.md`.
+- package version
+- project identity and runtime paths
+- SQLite readability through a read-only connection
+- SQLite `PRAGMA quick_check`
+- required monitor tables and columns
+- current-task/open-question summary without modifying the DB
+- Codex/generic onboarding consistency
+- malformed `AGENTS.md` managed markers
+- modified generated contract/skill warnings
+- saved remote state and project ownership
+- saved remote PID liveness
+- live backend project identity
+- Tailscale Serve mapping consistency
+- saved Windows startup state and startup files
+- runtime logs over 10 MiB
+- temporary runtime files left after interrupted writes
 
-## Verified capabilities
+Safety properties:
 
-- local dashboard and SQLite state
-- progress, current task, human questions and browser answers
-- artifact snapshots and project-specific metrics
-- reusable installed CLI with per-project isolation
-- Tailscale tailnet-only smartphone access
-- per-user Windows logon startup
-- machine-readable read-only `monitor status`
-- Codex and generic agent onboarding
-- real Codex workflow with iPhone human answer and transcript-independent continuation
+- doctor does not initialize an absent database
+- doctor does not run monitor schema migrations
+- doctor does not stop processes
+- doctor does not change Tailscale Serve
+- doctor does not delete stale state
+- doctor does not rewrite agent onboarding files
+- errors return exit code 1; warnings remain exit code 0
+- `--json` provides machine-readable output
 
-The standard-library test suite contains 72 tests. Cross-platform CI runs on Windows and Ubuntu with Python 3.10 and 3.12.
+The standard-library test suite now contains 84 tests. CI passes on Windows and Ubuntu with Python 3.10 and 3.12.
 
-## Production deployment note
+During CI, the first new Windows run exposed a test-only SQLite handle leak. The test now closes that connection explicitly; the corrected 4-environment matrix passes.
 
-The original monitor deployment remains separate from project-specific remotes.
+## Next task
 
-- production backend: `127.0.0.1:8765`
-- production Tailscale HTTPS port: `9443`
-- production tailnet URL: `https://leto.taile04360.ts.net:9443/`
-- production automatic startup is not configured
+Verify Phase 14 on the N100 before beginning Phase 15.
 
-## Formal v1.0.0 release
+1. pull the latest `main`
+2. run the full test suite and confirm all 84 tests pass
+3. reinstall with `uv tool install --force .`
+4. confirm installed version `1.1.0`
+5. run `monitor doctor` in `ai-agent-monitor` and confirm the report is understandable and non-destructive
+6. run `monitor doctor --json` and confirm valid JSON with the same overall result
+7. run doctor in a disposable empty project and confirm it does not create `.agent-monitor/monitor.db`
+8. create at least one disposable inconsistency, such as an incomplete SQLite schema or stale remote-state PID, and confirm doctor reports an error without repairing/deleting it
+9. confirm the production backend 8765 and HTTPS 9443 remain HTTP 200 and existing Serve mappings are unchanged
 
-The annotated `v1.0.0` tag and GitHub Release are published. The tagged release commit passed the release gate, and the working tree was confirmed clean during publication.
-
-`RELEASE_NOTES_v1.0.0.md` contains the release notes.
-
-Phase 14 has not started.
+Do not use the production project's real database as the deliberately broken test case.
 
 ## Post-v1 roadmap
 
-After the formal v1.0.0 release:
-
-- Phase 14: diagnostics and recovery
 - Phase 15: durable notifications
 - Phase 16: runner lifecycle and automatic resume
 - Phase 17: multi-project registry
@@ -78,7 +85,7 @@ After the formal v1.0.0 release:
 
 ## Handoff instruction
 
-A new assistant or developer should read, in this order:
+Read, in order:
 
 1. `README.md`
 2. `IMPLEMENTATION_PLAN.md`
@@ -87,4 +94,4 @@ A new assistant or developer should read, in this order:
 5. `AGENT_INTEGRATION.md`
 6. `PHASE13_VERIFICATION.md`
 
-Do not add post-v1 features unless their scope is requested.
+Then perform the task under **Next task**.
