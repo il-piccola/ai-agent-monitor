@@ -899,14 +899,19 @@ def discover_telegram_chat_id() -> str:
     )
 
 
-def enabled_notification_channels() -> list[str]:
+def enabled_notification_targets() -> list[tuple[str, str]]:
     config = read_notification_config()
-    channels: list[str] = []
-    for channel in ("telegram", "email"):
-        settings = config[channel]
-        if settings.get("enabled") is True:
-            channels.append(channel)
-    return channels
+    targets: list[tuple[str, str]] = []
+
+    telegram = config["telegram"]
+    if telegram.get("enabled") is True:
+        targets.append(("telegram", ""))
+
+    email = config["email"]
+    if email.get("enabled") is True:
+        targets.extend(("email", recipient) for recipient in email_recipients())
+
+    return targets
 
 
 def _enqueue_notification_event(
@@ -918,9 +923,9 @@ def _enqueue_notification_event(
     payload: dict[str, object],
     created_at: str,
 ) -> int:
-    channels = enabled_notification_channels()
-    initial_status = "pending" if channels else "cancelled"
-    cancelled_at = None if channels else created_at
+    targets = enabled_notification_targets()
+    initial_status = "pending" if targets else "cancelled"
+    cancelled_at = None if targets else created_at
 
     cursor = connection.execute(
         """
@@ -949,19 +954,20 @@ def _enqueue_notification_event(
     )
     if cursor.rowcount > 0 and cursor.lastrowid is not None:
         notification_id = int(cursor.lastrowid)
-        for channel in channels:
+        for channel, target in targets:
             connection.execute(
                 """
                 INSERT INTO notification_deliveries (
                     notification_id,
                     channel,
+                    target,
                     status,
                     attempt_count,
                     created_at
                 )
-                VALUES (?, ?, 'pending', 0, ?)
+                VALUES (?, ?, ?, 'pending', 0, ?)
                 """,
-                (notification_id, channel, created_at),
+                (notification_id, channel, target, created_at),
             )
         return notification_id
 
