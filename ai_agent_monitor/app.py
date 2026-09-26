@@ -1083,10 +1083,14 @@ def _send_telegram_notification(payload: dict[str, object]) -> None:
     if not token:
         raise RuntimeError(f"{TELEGRAM_TOKEN_ENV} is not set.")
 
+    text = _notification_text(payload)
+    if len(text) > 4096:
+        text = text[:4093] + "..."
+
     body = json.dumps(
         {
             "chat_id": chat_id,
-            "text": _notification_text(payload),
+            "text": text,
         },
         ensure_ascii=False,
     ).encode("utf-8")
