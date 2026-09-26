@@ -6,9 +6,9 @@
 - Visibility: public
 - Default branch: `main`
 - Formal release: `v1.0.0` published
-- Development package version: `1.2.0`
+- Development package version: `1.2.1`
 - Completed phases: 1 through 15
-- Current phase: Phase 15 verified on N100/iPhone; Phase 16 not started
+- Current phase: Phase 15 verified; multi-recipient email extension implementation complete, N100 verification pending; Phase 16 not started
 
 ## Phase 14 baseline
 
@@ -92,7 +92,34 @@ Operational safety:
 - repository code was not modified by the N100 verification
 - the Telegram bot remains outbound notification only; human answers continue through the monitor dashboard
 
+## Phase 15 multi-recipient email extension
+
+Version `1.2.1` adds configurable multiple email recipients without changing Telegram behavior.
+
+Implemented behavior:
+
+- notification recipients can be any valid email addresses supported by the configured SMTP provider
+- `monitor notify email set` accepts repeated `--to`
+- `monitor notify email recipient add|remove|list` manages recipients without re-entering SMTP settings
+- recipients are deduplicated case-insensitively
+- each recipient receives a separate message, so addresses are not exposed to other recipients
+- each recipient has independent pending/delivered/cancelled state
+- one failed recipient can be retried without resending successful recipients
+- removing a recipient cancels only that address's pending deliveries
+- removing the last recipient disables email
+- existing single-recipient `to` configuration is migrated in memory to the recipient list
+- the existing notification-delivery table migrates to a per-target uniqueness key
+- Telegram behavior and the email ON/OFF switch remain unchanged
+
+The standard-library suite now contains 112 tests. Cross-platform CI has passed the new multi-recipient and legacy-migration tests on Windows and Ubuntu with Python 3.10 and 3.12.
+
 ## Next task
+
+Verify the Phase 15 multi-recipient extension on the N100 before starting Phase 16.
+
+Use the existing disposable Phase 15 notification project. Confirm the previous Gmail recipient survives the 1.2.1 upgrade, add a second test recipient, enable email, send one question, and verify both addresses receive separate messages while Telegram still receives one notification. Then remove the second recipient and verify a later question goes only to the remaining email recipient plus Telegram.
+
+Do not expose email addresses, Gmail app passwords, or the Telegram bot token in chat or committed files.
 
 Phase 16 has not started.
 
