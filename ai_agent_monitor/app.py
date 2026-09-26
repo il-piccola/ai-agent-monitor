@@ -378,6 +378,24 @@ def connect_db() -> sqlite3.Connection:
         """
     )
     _ensure_notification_outbox_columns(connection)
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS notification_deliveries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            notification_id INTEGER NOT NULL,
+            channel TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            attempt_count INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            last_attempt_at TEXT,
+            delivered_at TEXT,
+            cancelled_at TEXT,
+            last_error TEXT,
+            UNIQUE(notification_id, channel),
+            FOREIGN KEY(notification_id) REFERENCES notification_outbox(id)
+        )
+        """
+    )
     connection.commit()
     return connection
 
