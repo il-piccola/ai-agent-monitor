@@ -261,3 +261,20 @@ The contract is bundled with the Python package and is also usable independently
 Install/update is idempotent. Existing `AGENTS.md` content outside the marked monitor block is preserved. Removal verifies generated files before deleting them; modified generated files are left in place rather than being destroyed.
 
 The monitor does not assume that non-Codex agents discover `.agents/skills/`. Their own instruction mechanism can reference the generic contract.
+
+
+## Read-only diagnostics
+
+Phase 14 adds `monitor doctor` as a read-only operational diagnostic boundary.
+
+The doctor does not call the normal SQLite initialization path because that path may create tables or migrate old question columns. Database diagnosis instead opens an existing SQLite file in read-only/query-only mode, runs `PRAGMA quick_check`, and verifies the required tables and columns.
+
+Other checks inspect agent onboarding consistency, saved remote state, live backend identity, Tailscale Serve mapping, Windows startup files, large runtime logs, and interrupted-write temporary files.
+
+Diagnostic results use three severities:
+
+- `ok`: no action required
+- `warning`: usable state with something the operator should inspect
+- `error`: an inconsistency that prevents the diagnosed feature from being trusted
+
+The first implementation does not repair findings. This keeps diagnosis safe to run from agents and automation without granting it destructive behavior.
