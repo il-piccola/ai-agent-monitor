@@ -701,6 +701,10 @@ def _enqueue_notification_event(
     payload: dict[str, object],
     created_at: str,
 ) -> int:
+    channels = enabled_notification_channels()
+    initial_status = "pending" if channels else "cancelled"
+    cancelled_at = None if channels else created_at
+
     cursor = connection.execute(
         """
         INSERT INTO notification_outbox (
@@ -710,9 +714,10 @@ def _enqueue_notification_event(
             payload_json,
             status,
             attempt_count,
-            created_at
+            created_at,
+            cancelled_at
         )
-        VALUES (?, ?, ?, ?, 'pending', 0, ?)
+        VALUES (?, ?, ?, ?, ?, 0, ?, ?)
         ON CONFLICT(event_type, entity_type, entity_id) DO NOTHING
         """,
         (
@@ -720,11 +725,28 @@ def _enqueue_notification_event(
             entity_type,
             entity_id,
             json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+            initial_status,
             created_at,
+            cancelled_at,
         ),
     )
     if cursor.rowcount > 0 and cursor.lastrowid is not None:
-        return int(cursor.lastrowid)
+        notification_id = int(cursor.lastrowid)
+        for channel in channels:
+            connection.execute(
+                """
+                INSERT INTO notification_deliveries (
+                    notification_id,
+                    channel,
+                    status,
+                    attempt_count,
+                    created_at
+                )
+                VALUES (?, ?, 'pending', 0, ?)
+                """,
+                (notification_id, channel, created_at),
+            )
+        return notification_id
 
     row = connection.execute(
         """
