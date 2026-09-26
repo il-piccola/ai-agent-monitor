@@ -278,3 +278,18 @@ Diagnostic results use three severities:
 - `error`: an inconsistency that prevents the diagnosed feature from being trusted
 
 The first implementation does not repair findings. This keeps diagnosis safe to run from agents and automation without granting it destructive behavior.
+
+
+## Durable notification outbox
+
+Phase 15 keeps notification delivery separate from the authoritative question/answer state.
+
+When `monitor ask` creates a question, the same SQLite transaction creates one `question.created` outbox event. The logical event is unique by `event_type + entity_type + entity_id`, preventing repeated application logic from creating multiple logical notifications for the same question.
+
+Outbox records store the event payload and delivery state but no external-service secret. Delivery attempts update attempt count, last-attempt time, and last error. Successful delivery records a delivered timestamp.
+
+If the human answers a question while its notification is still pending, the same answer transaction changes that outbox record to `cancelled`. This prevents a delayed notifier from sending a stale question after it has already been resolved.
+
+The outbox is durable across process restarts. It provides at-least-once delivery attempts at the transport boundary; a process failure after a remote service accepts a message but before the local delivered update may still produce a duplicate transport message unless that service provides an idempotency mechanism. The database uniqueness rule prevents duplicate logical outbox events but does not claim network-level exactly-once delivery.
+
+External adapter credentials must stay outside committed files and outbox payloads.
