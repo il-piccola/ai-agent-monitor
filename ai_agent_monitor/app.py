@@ -625,6 +625,32 @@ def set_notification_channel_enabled(channel: str, enabled: bool) -> dict[str, o
 
     settings["enabled"] = enabled
     write_notification_config(config)
+
+    if not enabled and DB_PATH.is_file():
+        cancelled_at = utc_now()
+        with database_session() as connection:
+            notification_ids = [
+                int(row[0])
+                for row in connection.execute(
+                    """
+                    SELECT DISTINCT notification_id
+                    FROM notification_deliveries
+                    WHERE channel = ? AND status = 'pending'
+                    """,
+                    (channel,),
+                ).fetchall()
+            ]
+            connection.execute(
+                """
+                UPDATE notification_deliveries
+                SET status = 'cancelled', cancelled_at = ?
+                WHERE channel = ? AND status = 'pending'
+                """,
+                (cancelled_at, channel),
+            )
+            for notification_id in notification_ids:
+                _refresh_notification_status(connection, notification_id)
+
     return settings
 
 
