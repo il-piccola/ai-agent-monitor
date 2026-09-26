@@ -1066,6 +1066,7 @@ def list_notification_deliveries(
             id,
             notification_id,
             channel,
+            target,
             status,
             attempt_count,
             created_at,
@@ -1088,13 +1089,14 @@ def list_notification_deliveries(
             "id": row[0],
             "notification_id": row[1],
             "channel": row[2],
-            "status": row[3],
-            "attempt_count": row[4],
-            "created_at": row[5],
-            "last_attempt_at": row[6],
-            "delivered_at": row[7],
-            "cancelled_at": row[8],
-            "last_error": row[9],
+            "target": row[3],
+            "status": row[4],
+            "attempt_count": row[5],
+            "created_at": row[6],
+            "last_attempt_at": row[7],
+            "delivered_at": row[8],
+            "cancelled_at": row[9],
+            "last_error": row[10],
         }
         for row in rows
     ]
@@ -1168,7 +1170,7 @@ def record_notification_delivery_attempt(
     with database_session() as connection:
         row = connection.execute(
             """
-            SELECT notification_id, channel, status, attempt_count
+            SELECT notification_id, channel, target, status, attempt_count
             FROM notification_deliveries
             WHERE id = ?
             """,
@@ -1179,14 +1181,16 @@ def record_notification_delivery_attempt(
 
         notification_id = int(row[0])
         channel = str(row[1])
-        current_status = str(row[2])
-        attempt_count = int(row[3])
+        target = str(row[2])
+        current_status = str(row[3])
+        attempt_count = int(row[4])
 
         if current_status in {"delivered", "cancelled"}:
             return {
                 "id": delivery_id,
                 "notification_id": notification_id,
                 "channel": channel,
+                "target": target,
                 "status": current_status,
                 "attempt_count": attempt_count,
             }
@@ -1228,6 +1232,7 @@ def record_notification_delivery_attempt(
             "id": delivery_id,
             "notification_id": notification_id,
             "channel": channel,
+            "target": target,
             "status": status,
             "attempt_count": attempt_count,
         }
