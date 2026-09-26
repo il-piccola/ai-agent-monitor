@@ -670,7 +670,6 @@ def ask_question(question: str) -> dict[str, object]:
         "id": question_id,
         "question": question,
         "created_at": created_at,
-        "notification_id": notification_id,
     }
 
 
