@@ -3024,6 +3024,42 @@ def parse_ask_args(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def parse_notify_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="monitor notify",
+        description="Configure and deliver human notifications.",
+    )
+    subparsers = parser.add_subparsers(dest="section", required=True)
+    subparsers.add_parser("status", help="Show notification configuration")
+    subparsers.add_parser("send", help="Attempt pending notification deliveries now")
+
+    telegram = subparsers.add_parser("telegram", help="Configure Telegram notifications")
+    telegram_actions = telegram.add_subparsers(dest="action", required=True)
+    telegram_set = telegram_actions.add_parser("set", help="Set Telegram chat ID")
+    telegram_set.add_argument("--chat-id", required=True)
+    telegram_actions.add_parser("discover", help="Discover the latest chat that messaged the bot")
+    telegram_actions.add_parser("on", help="Enable Telegram for future notifications")
+    telegram_actions.add_parser("off", help="Disable Telegram and cancel pending Telegram deliveries")
+
+    email = subparsers.add_parser("email", help="Configure optional email notifications")
+    email_actions = email.add_subparsers(dest="action", required=True)
+    email_set = email_actions.add_parser("set", help="Set SMTP email settings")
+    email_set.add_argument("--to", required=True, dest="to_address")
+    email_set.add_argument("--from-address", required=True)
+    email_set.add_argument("--smtp-host", required=True)
+    email_set.add_argument("--smtp-port", type=int, default=587)
+    email_set.add_argument("--username")
+    email_set.add_argument(
+        "--security",
+        choices=("starttls", "ssl", "none"),
+        default="starttls",
+    )
+    email_actions.add_parser("on", help="Enable email for future notifications")
+    email_actions.add_parser("off", help="Disable email and cancel pending email deliveries")
+
+    return parser.parse_args(argv)
+
+
 def parse_notifications_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="monitor notifications",
@@ -3102,6 +3138,45 @@ def serve(port: int) -> None:
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "notify":
+        args = parse_notify_args(sys.argv[2:])
+        if args.section == "status":
+            print(json.dumps(notification_config_public(), ensure_ascii=False, indent=2))
+            return
+        if args.section == "send":
+            print(json.dumps(dispatch_pending_notifications(), ensure_ascii=False, indent=2))
+            return
+        if args.section == "telegram":
+            if args.action == "set":
+                configure_telegram(args.chat_id)
+                print("Telegram chat ID configured.")
+                return
+            if args.action == "discover":
+                chat_id = discover_telegram_chat_id()
+                configure_telegram(chat_id)
+                print(f"Telegram chat ID discovered: {chat_id}")
+                return
+            enabled = args.action == "on"
+            set_notification_channel_enabled("telegram", enabled)
+            print(f"Telegram notifications {'enabled' if enabled else 'disabled'}.")
+            return
+        if args.section == "email":
+            if args.action == "set":
+                configure_email(
+                    to_address=args.to_address,
+                    from_address=args.from_address,
+                    smtp_host=args.smtp_host,
+                    smtp_port=args.smtp_port,
+                    username=args.username,
+                    security=args.security,
+                )
+                print("Email notification settings configured.")
+                return
+            enabled = args.action == "on"
+            set_notification_channel_enabled("email", enabled)
+            print(f"Email notifications {'enabled' if enabled else 'disabled'}.")
+            return
+
     if len(sys.argv) > 1 and sys.argv[1] == "doctor":
         args = parse_doctor_args(sys.argv[2:])
         report = doctor_snapshot()
