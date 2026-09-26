@@ -25,6 +25,7 @@ import uuid
 from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 from email.message import EmailMessage
+from email.utils import parseaddr
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Iterator
@@ -284,6 +285,71 @@ def _ensure_question_columns(connection: sqlite3.Connection) -> None:
         connection.execute("ALTER TABLE questions ADD COLUMN answered_at TEXT")
 
 
+def _ensure_notification_deliveries_target(connection: sqlite3.Connection) -> None:
+    columns = {
+        row[1]
+        for row in connection.execute(
+            "PRAGMA table_info(notification_deliveries)"
+        ).fetchall()
+    }
+    if "target" in columns:
+        return
+
+    connection.execute(
+        "ALTER TABLE notification_deliveries RENAME TO notification_deliveries_legacy"
+    )
+    connection.execute(
+        """
+        CREATE TABLE notification_deliveries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            notification_id INTEGER NOT NULL,
+            channel TEXT NOT NULL,
+            target TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'pending',
+            attempt_count INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            last_attempt_at TEXT,
+            delivered_at TEXT,
+            cancelled_at TEXT,
+            last_error TEXT,
+            UNIQUE(notification_id, channel, target),
+            FOREIGN KEY(notification_id) REFERENCES notification_outbox(id)
+        )
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO notification_deliveries (
+            id,
+            notification_id,
+            channel,
+            target,
+            status,
+            attempt_count,
+            created_at,
+            last_attempt_at,
+            delivered_at,
+            cancelled_at,
+            last_error
+        )
+        SELECT
+            id,
+            notification_id,
+            channel,
+            '',
+            status,
+            attempt_count,
+            created_at,
+            last_attempt_at,
+            delivered_at,
+            cancelled_at,
+            last_error
+        FROM notification_deliveries_legacy
+        """
+    )
+    connection.execute("DROP TABLE notification_deliveries_legacy")
+
+
 def _ensure_notification_outbox_columns(connection: sqlite3.Connection) -> None:
     columns = {
         row[1]
@@ -385,6 +451,7 @@ def connect_db() -> sqlite3.Connection:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             notification_id INTEGER NOT NULL,
             channel TEXT NOT NULL,
+            target TEXT NOT NULL DEFAULT '',
             status TEXT NOT NULL DEFAULT 'pending',
             attempt_count INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL,
@@ -392,11 +459,12 @@ def connect_db() -> sqlite3.Connection:
             delivered_at TEXT,
             cancelled_at TEXT,
             last_error TEXT,
-            UNIQUE(notification_id, channel),
+            UNIQUE(notification_id, channel, target),
             FOREIGN KEY(notification_id) REFERENCES notification_outbox(id)
         )
         """
     )
+    _ensure_notification_deliveries_target(connection)
     connection.commit()
     return connection
 
