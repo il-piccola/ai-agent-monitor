@@ -531,3 +531,100 @@ The JSON report has an overall status of `ok`, `warning`, or `error`. An error e
 The first doctor implementation is deliberately diagnostic only. It does not migrate a database, delete stale runtime state, stop processes, change Tailscale Serve, or rewrite onboarding files.
 
 Runtime diagnostics currently warn when remote log files exceed 10 MiB or when temporary runtime files remain after an interrupted write.
+
+
+## Telegram and optional email notifications
+
+Version 1.2 adds durable human-attention notifications. Telegram is the primary adapter. Email is optional and can be turned on or off independently.
+
+Notification delivery is backed by SQLite. A question and its notification event are created in one transaction. Each enabled channel has its own delivery state, so a failed email retry does not resend a Telegram message that already succeeded.
+
+### Telegram
+
+Create a bot with Telegram BotFather and keep its bot token outside the repository. The monitor reads it from:
+
+```text
+AI_AGENT_MONITOR_TELEGRAM_BOT_TOKEN
+```
+
+The user must message the bot first. Then either set the chat ID directly:
+
+```bash
+monitor notify telegram set --chat-id CHAT_ID
+```
+
+or discover the most recent chat that messaged the bot:
+
+```bash
+monitor notify telegram discover
+```
+
+Enable future Telegram notifications:
+
+```bash
+monitor notify telegram on
+```
+
+Disable them and cancel pending Telegram deliveries:
+
+```bash
+monitor notify telegram off
+```
+
+### Optional email
+
+Configure SMTP without storing the SMTP password in the project:
+
+```bash
+monitor notify email set \
+  --to you@example.com \
+  --from-address monitor@example.com \
+  --smtp-host smtp.example.com \
+  --smtp-port 587 \
+  --username monitor@example.com \
+  --security starttls
+```
+
+When SMTP authentication is configured, the password is read from:
+
+```text
+AI_AGENT_MONITOR_SMTP_PASSWORD
+```
+
+Email is off until explicitly enabled:
+
+```bash
+monitor notify email on
+monitor notify email off
+```
+
+Supported SMTP security modes are `starttls`, `ssl`, and `none`.
+
+### Delivery state
+
+Inspect configuration:
+
+```bash
+monitor notify status
+```
+
+Force an immediate retry of pending deliveries:
+
+```bash
+monitor notify send
+```
+
+Inspect durable outbox events:
+
+```bash
+monitor notifications
+monitor notifications --status pending
+monitor notifications --status delivered
+monitor notifications --status cancelled
+```
+
+The running monitor server polls pending deliveries every five seconds. Failed automatic deliveries remain pending and are retried no more than once per minute. Manual `monitor notify send` bypasses that retry delay.
+
+If a question is answered before a pending notification is delivered, the pending delivery is cancelled. If Telegram has already succeeded while optional email is still pending, answering the question cancels only the email delivery and keeps the event recorded as delivered.
+
+`.agent-monitor/notifications.json` stores only non-secret project-local settings and is added to the nested `.gitignore`. Bot tokens and SMTP passwords are never written to that file or the notification database.
