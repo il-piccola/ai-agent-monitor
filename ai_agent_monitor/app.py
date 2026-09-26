@@ -3052,6 +3052,14 @@ def serve(port: int) -> None:
     connect_db().close()
 
     server = ThreadingHTTPServer((HOST, port), DashboardHandler)
+    stop_notifications = threading.Event()
+    notification_thread = threading.Thread(
+        target=_notification_dispatch_loop,
+        args=(stop_notifications,),
+        name="ai-agent-monitor-notifications",
+        daemon=True,
+    )
+    notification_thread.start()
     url = f"http://{HOST}:{port}"
 
     print(f"AI Agent Monitor is running at {url}")
@@ -3062,6 +3070,8 @@ def serve(port: int) -> None:
     except KeyboardInterrupt:
         print("\nStopping AI Agent Monitor.")
     finally:
+        stop_notifications.set()
+        notification_thread.join(timeout=2)
         server.server_close()
 
 
