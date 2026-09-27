@@ -339,3 +339,6 @@ The server launches a detached monitor worker rather than running Codex inside t
 Crash recovery is conservative. A request whose worker PID is still alive remains active. If a request was claimed/running but its worker can no longer be proven alive, it becomes `uncertain`; the dispatcher does not automatically retry it. A human can inspect it and explicitly return it to pending with `monitor runner retry <id>`.
 
 This trades a possible manual recovery step for protection against launching two Codex processes after an ambiguous crash boundary.
+
+
+The Codex compatibility preflight uses the same shared argv constructor as the resume worker. Verification therefore tests the actual non-interactive permission configuration instead of duplicating CLI flags in an operator runbook.
