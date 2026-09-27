@@ -6,9 +6,9 @@
 - Visibility: public
 - Default branch: `main`
 - Formal release: `v1.0.0` published
-- Development package version: `1.4.0`
+- Development package version: `1.5.0`
 - Completed phases: 1 through 17
-- Current phase: Phase 17 verified on N100 and iPhone; Phase 18 not started
+- Current phase: Phase 18 implemented and running on N100; iPhone visual verification pending
 
 ## Verified baseline
 
@@ -95,6 +95,14 @@ The standard-library suite passes all 140 tests on N100 for the Phase 17 impleme
 
 N100 runtime verification: the existing 8765/9443 deployment was restarted on the same ports. `/registry`, `/api/registry`, and `/api/status` returned HTTP 200. The registry reported `ai-agent-monitor` and `nashiri-core` as available; the latter reported its active task and one unanswered question. Backend 8766 and HTTPS 9444 remained HTTP 200. The Serve mappings for 443, 8443, 8444, 9443, and 9444 remained unchanged. On 2026-09-27, the human confirmed that both project cards are displayed on the iPhone and that both registry links open their respective dashboards. Phase 17 success conditions are met.
 
+## Phase 18 implementation
+
+Version `1.5.0` adds read-only `monitor telemetry`, `/api/telemetry`, and a Japanese automatic-telemetry dashboard section. Each numeric measurement includes its source and observation time. The measurements derive from task start/end records, question/answer timestamps, and automatic-resume attempt records. Manual metrics remain separate. Tool failures, provider tokens/cost/cache, quality, and error rates are not inferred without authoritative data.
+
+`task_runs` begins recording completed or replaced tasks as version 1.5 handles them. Older completed tasks cannot be reconstructed. Reading telemetry on an empty project does not create a database. The standard-library suite passes 148 tests on N100.
+
+N100 runtime verification: the existing 8765/9443 server was restarted on those same ports. The dashboard HTML contains the Japanese automatic-telemetry section and returned HTTP 200. `/api/telemetry` returned schema 1, project identity, six measurements from the existing project database, source metadata, and observation timestamps. `/api/registry` still listed both projects. Backend 8766 and HTTPS 9444 returned HTTP 200. Serve mappings for 443, 8443, 8444, 9443, and 9444 were unchanged. iPhone visual confirmation is pending.
+
 ## Next task
 
-Phase 18 automatic telemetry has not started. The N100's installed `uv tool` CLI remains at 1.3.1 because the active `nashiri-core` server was left running; the 1.4.0 registry was deployed directly from this repository source on the existing 8765/9443 service.
+Confirm the automatic-telemetry section on iPhone. The N100's installed `uv tool` CLI remains at 1.3.1 because the active `nashiri-core` server was left running; the repository source CLI contains version 1.5.0. Phase 19 has not started.

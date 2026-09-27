@@ -251,6 +251,18 @@
       </section>
 
       <section class="card">
+        <div class="card-heading">
+          <h2>自動計測</h2>
+          <span id="telemetry-count" class="status">0件</span>
+        </div>
+        <p id="telemetry-empty" class="empty">計測できる記録はまだありません。</p>
+        <div id="telemetry-grid" class="metric-grid" hidden></div>
+        <p id="telemetry-error" class="load-error" hidden>
+          自動計測を取得できません。自動的に再試行します。
+        </p>
+      </section>
+
+      <section class="card">
         <h2>Recent progress</h2>
         <p id="progress-empty" class="empty">No progress has been recorded yet.</p>
         <ul id="progress-list" class="progress-list" hidden></ul>
@@ -296,6 +308,11 @@
     const metricsEmpty = document.querySelector("#metrics-empty");
     const metricGrid = document.querySelector("#metric-grid");
     const metricsError = document.querySelector("#metrics-error");
+
+    const telemetryCount = document.querySelector("#telemetry-count");
+    const telemetryEmpty = document.querySelector("#telemetry-empty");
+    const telemetryGrid = document.querySelector("#telemetry-grid");
+    const telemetryError = document.querySelector("#telemetry-error");
 
     const progressList = document.querySelector("#progress-list");
     const progressEmpty = document.querySelector("#progress-empty");
@@ -371,6 +388,33 @@
 
       metricsEmpty.hidden = true;
       metricGrid.hidden = false;
+    }
+
+    function renderTelemetry(items) {
+      telemetryGrid.replaceChildren();
+      telemetryCount.textContent = `${items.length}件`;
+      if (items.length === 0) {
+        telemetryGrid.hidden = true;
+        telemetryEmpty.hidden = false;
+        return;
+      }
+      for (const item of items) {
+        const card = document.createElement("div");
+        const label = document.createElement("span");
+        const value = document.createElement("span");
+        const provenance = document.createElement("span");
+        card.className = "metric";
+        label.className = "metric-label";
+        label.textContent = item.label;
+        value.className = "metric-value";
+        value.textContent = `${item.value} ${item.unit}`;
+        provenance.className = "metric-updated";
+        provenance.textContent = `出典: ${item.source} · 観測: ${formatTimestamp(item.observed_at)}`;
+        card.append(label, value, provenance);
+        telemetryGrid.append(card);
+      }
+      telemetryEmpty.hidden = true;
+      telemetryGrid.hidden = false;
     }
 
     function renderProgress(items) {
@@ -563,6 +607,18 @@
       }
     }
 
+    async function refreshTelemetry() {
+      try {
+        const response = await fetch("/api/telemetry", { cache: "no-store" });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        renderTelemetry(Array.isArray(payload.measurements) ? payload.measurements : []);
+        telemetryError.hidden = true;
+      } catch (error) {
+        telemetryError.hidden = false;
+      }
+    }
+
     async function refreshProgress() {
       try {
         const response = await fetch("/api/progress", { cache: "no-store" });
@@ -615,6 +671,7 @@
     function refreshDashboard() {
       refreshTask();
       refreshMetrics();
+      refreshTelemetry();
       refreshProgress();
       refreshArtifact();
       refreshQuestions();

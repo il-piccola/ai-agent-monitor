@@ -32,6 +32,7 @@ from typing import Iterator
 
 from . import __version__
 from . import registry as project_registry
+from . import telemetry as project_telemetry
 
 HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
@@ -409,6 +410,17 @@ def connect_db() -> sqlite3.Connection:
     )
     connection.execute(
         """
+        CREATE TABLE IF NOT EXISTS task_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            started_at TEXT NOT NULL,
+            ended_at TEXT NOT NULL,
+            outcome TEXT NOT NULL CHECK (outcome IN ('completed', 'replaced'))
+        )
+        """
+    )
+    connection.execute(
+        """
         CREATE TABLE IF NOT EXISTS questions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             question TEXT NOT NULL,
@@ -605,9 +617,20 @@ def start_task(title: str) -> dict[str, str]:
     if not title:
         raise ValueError("Task title must not be empty.")
 
-    started_at = utc_now()
-
     with database_session() as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        started_at = utc_now()
+        previous = connection.execute(
+            "SELECT title, started_at FROM current_task WHERE id = 1"
+        ).fetchone()
+        if previous is not None:
+            connection.execute(
+                """
+                INSERT INTO task_runs (title, started_at, ended_at, outcome)
+                VALUES (?, ?, ?, 'replaced')
+                """,
+                (previous[0], previous[1], started_at),
+            )
         connection.execute(
             """
             INSERT INTO current_task (id, title, started_at)
@@ -642,8 +665,21 @@ def get_current_task() -> dict[str, str] | None:
 
 def complete_task() -> bool:
     with database_session() as connection:
-        cursor = connection.execute("DELETE FROM current_task WHERE id = 1")
-        return cursor.rowcount > 0
+        connection.execute("BEGIN IMMEDIATE")
+        current = connection.execute(
+            "SELECT title, started_at FROM current_task WHERE id = 1"
+        ).fetchone()
+        if current is None:
+            return False
+        connection.execute(
+            """
+            INSERT INTO task_runs (title, started_at, ended_at, outcome)
+            VALUES (?, ?, ?, 'completed')
+            """,
+            (current[0], current[1], utc_now()),
+        )
+        connection.execute("DELETE FROM current_task WHERE id = 1")
+        return True
 
 
 TELEGRAM_TOKEN_ENV = "AI_AGENT_MONITOR_TELEGRAM_BOT_TOKEN"
@@ -2791,6 +2827,10 @@ def status_snapshot() -> dict[str, object]:
     }
 
 
+def telemetry_snapshot() -> dict[str, object]:
+    return project_telemetry.snapshot(DB_PATH, project_info())
+
+
 def remote_runtime_dir() -> Path:
     return DATA_DIR / "runtime"
 
@@ -3417,6 +3457,7 @@ DOCTOR_LOG_WARNING_BYTES = 10 * 1024 * 1024
 DOCTOR_REQUIRED_SCHEMA = {
     "progress": {"id", "message", "created_at"},
     "current_task": {"id", "title", "started_at"},
+    "task_runs": {"id", "title", "started_at", "ended_at", "outcome"},
     "questions": {
         "id", "question", "status", "created_at", "answer", "answered_at", "runner_id"
     },
@@ -4053,6 +4094,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
         if path == "/api/status":
             self._serve_json(status_snapshot())
+            return
+
+        if path == "/api/telemetry":
+            self._serve_json(telemetry_snapshot())
             return
 
         if path == "/api/project":
@@ -4780,6 +4825,10 @@ def main() -> None:
 
     if len(sys.argv) > 1 and sys.argv[1] == "status":
         print(json.dumps(status_snapshot(), ensure_ascii=False, indent=2))
+        return
+
+    if len(sys.argv) > 1 and sys.argv[1] == "telemetry":
+        print(json.dumps(telemetry_snapshot(), ensure_ascii=False, indent=2))
         return
 
     if len(sys.argv) > 1 and sys.argv[1] == "answers":

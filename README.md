@@ -20,6 +20,8 @@ Phases 14 through 16 are verified on the N100. Phase 16 passed a real iPhone ans
 
 Phase 17 adds a project registry. Its two-project list and dashboard links are verified on the N100 and iPhone.
 
+Phase 18 adds automatic telemetry derived from Monitor's own records. N100 runtime checks passed; iPhone visual verification is pending.
+
 The dashboard supports progress updates, a current task, unanswered questions, browser-submitted answers, registered artifact snapshots, and project-specific metrics. The installed CLI keeps each project's data and optional dashboard separate. The data is stored locally and the dashboard refreshes automatically.
 
 ## Run the dashboard
@@ -735,3 +737,15 @@ Registration verifies each project's `/api/project` identity. The host server re
 New servers expose the read-only `/api/status` snapshot. For an older Monitor server without that endpoint, the registry reads its existing project, task, question, progress, and answer APIs. The registry config is `.agent-monitor/registry.json` in the hosting project and is ignored by Git. Only HTTPS dashboard URLs and loopback HTTP URLs are accepted.
 
 The registry can share an existing Monitor HTTPS address, such as `https://monitor-host.example:9443/registry`; no additional Tailscale Serve entry is needed.
+
+## Automatic telemetry
+
+Version 1.5 adds a separate read-only view of measurements that Monitor can derive from its own project database:
+
+```bash
+monitor telemetry
+```
+
+The same JSON is available at `/api/telemetry` and appears in the dashboard's **自動計測** section. Each measurement includes its source and `observed_at` timestamp. Available measurements include active and completed task duration, open and answered question counts, human wait time, and completed/failed automatic resume attempts and their duration. The completed-task history starts when version 1.5 handles a task completion or replacement; earlier completed tasks cannot be reconstructed from the previous single-current-task database.
+
+Manual `monitor metric` entries stay separate and editable. Telemetry does not infer tool failures, provider token usage, cost, cache usage, quality, or error rates because Monitor has no authoritative feed for those values. A missing source produces no invented measurement. A telemetry read on an empty project does not create a database.

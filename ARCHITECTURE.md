@@ -350,3 +350,11 @@ Phase 17 hosts a registry within an ordinary project Monitor server. Its project
 The read-only `/api/status` endpoint exposes the existing `monitor status` snapshot. The registry requests that endpoint over HTTP from each registered server; older servers fall back to their existing project, task, question, progress, and answer APIs. It does not open another project's SQLite database or runtime files. HTTP probes have bounded response size and timeout, and are parallelized so an offline project does not block every card.
 
 Each poll verifies that a URL still reports the registered project ID. A mismatched or unreachable server is shown as unavailable while the saved entry and dashboard URL remain visible. The browser reads only the hosting server's `/api/registry` endpoint and does not require direct browser access to every project's API. The `/registry` page can be served through an existing Tailscale Serve mapping without allocating another port.
+
+## Automatic telemetry
+
+Phase 18 derives measurements from project-local SQLite records and keeps them separate from manually set metrics. The read-only `/api/telemetry` and `monitor telemetry` paths open the database in SQLite read-only mode and do not create a database for an empty project. Each measurement includes a stable key, label, numeric value, unit, source table/columns, optional source event time, and observation time.
+
+`task_runs` records a completed or replaced task in the same transaction that changes `current_task`. This retains completed-task duration from version 1.5 onward and captures a preexisting active task when it is later completed or replaced. Earlier completed tasks have no recoverable start/end pair and are not backfilled.
+
+Question counts and wait times use `questions` status and timestamps. Automatic resume counts and duration use `resume_attempts`; a failed resume attempt is identified as such, not generalized into a tool-error rate. Uncertain attempts are excluded from both success and failure counts. The dashboard renders these values in a separate automatic section and shows provenance. No token, cost, cache, quality, or tool-failure value is inferred without an authoritative record.
