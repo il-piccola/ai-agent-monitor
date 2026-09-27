@@ -38,6 +38,8 @@ Version 1.6.2 adds an optional Codex API-equivalent cost estimate for projects t
 
 Version 1.6.3 places that estimate inside **案件メトリクス** and can show the signed-in Codex account's weekly remaining quota beside it. The weekly quota is account-wide, not project-specific, and its card says so. It uses the documented local Codex app-server over stdio; no new listening port is opened.
 
+Version 1.6.4 keeps the last successfully displayed weekly quota and observation time when a later refresh fails or omits the weekly window. The card updates only after a valid new result arrives.
+
 The dashboard supports progress updates, a current task, unanswered questions, browser-submitted answers, registered artifact snapshots, and project-specific metrics. The installed CLI keeps each project's data and optional dashboard separate. The data is stored locally and the dashboard refreshes automatically.
 
 ## Run the dashboard
@@ -796,4 +798,4 @@ monitor usage enable
 monitor usage status
 ```
 
-The **Codex週間枠残量（アカウント共通）** card appears inside **案件メトリクス**. It reads the signed-in Codex account's core seven-day quota through `codex app-server` using its local stdio protocol and `account/rateLimits/read`. The read runs in the background, refreshes at most once per minute while a dashboard is open, and exposes only the remaining percentage, reset time, and observation time through `/api/codex-usage`. No account ID, email, token, or reset-credit information is sent to the dashboard. If no seven-day quota is returned, the card says it cannot be determined rather than inferring a value. `monitor usage disable` hides the card. The CLI executable path is saved in ignored project-local runtime configuration so Windows logon startup does not depend on PATH. Source: [Codex app-server account rate limits](https://learn.chatgpt.com/docs/app-server).
+The **Codex週間枠残量（アカウント共通）** card appears inside **案件メトリクス**. It reads the signed-in Codex account's core seven-day quota through `codex app-server` using its local stdio protocol and `account/rateLimits/read`. The read runs in the background, refreshes at most once per minute while a dashboard is open, and exposes only the remaining percentage, reset time, and observation time through `/api/codex-usage`. No account ID, email, token, or reset-credit information is sent to the dashboard. A failed refresh leaves the last successful value and observation time unchanged; a valid later result replaces them. If no valid value has ever been received, no percentage is invented. `monitor usage disable` hides the card. The CLI executable path is saved in ignored project-local runtime configuration so Windows logon startup does not depend on PATH. Source: [Codex app-server account rate limits](https://learn.chatgpt.com/docs/app-server).

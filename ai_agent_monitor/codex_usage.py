@@ -66,7 +66,7 @@ def read_weekly_limit(codex_command: str, timeout: float = 15.0) -> dict | None:
     threading.Thread(target=read_output, daemon=True).start()
     messages = (
         {"id": 1, "method": "initialize", "params": {
-            "clientInfo": {"name": "ai_agent_monitor", "title": "AI Agent Monitor", "version": "1.6.3"}
+            "clientInfo": {"name": "ai_agent_monitor", "title": "AI Agent Monitor", "version": "1.6.4"}
         }},
         {"method": "initialized", "params": {}},
         {"id": 2, "method": "account/rateLimits/read", "params": {}},
@@ -185,6 +185,9 @@ class WeeklyUsageManager:
                 self._running = False
             return
         with self._lock:
-            self._result = result
-            self._error = False
+            if value is None and self._result is not None and "remaining_percent" in self._result:
+                self._error = True
+            else:
+                self._result = result
+                self._error = False
             self._running = False

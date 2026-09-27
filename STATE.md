@@ -6,7 +6,7 @@
 - Visibility: public
 - Default branch: `main`
 - Formal release: `v1.0.0` published
-- Development package version: `1.6.3`
+- Development package version: `1.6.4`
 - Completed phases: 1 through 18
 - Current work: Phase 20 two-way Telegram answers; Phase 19 remains deferred at the human's request
 
@@ -130,3 +130,5 @@ Version 1.6.2 replaces the one-off `nashiri-core` cost metric with an opt-in, pe
 N100 deployment verification: the installed CLI is 1.6.2. `nashiri-core` was stopped and returned on the same 8766/9444 ports. The cost section is enabled there; `/api/codex-cost` transitioned from `calculating` to `ready` and returned 127.81 USD for 4,521 priced responses, with 87 `codex-auto-review` responses excluded. The one-off `cost.api_reference_total` metric was deleted, leaving `/api/metrics` empty. The HTML and both APIs returned HTTP 200 over the existing 9444 tailnet URL. Existing 8765/9443 and 8766/9444 local and tailnet URLs returned HTTP 200; Serve mappings for 443, 8443, 8444, 9443, and 9444 matched the baseline exactly. No new port or service was created. The project's unrelated uncommitted work remains intact; only Monitor runtime files changed. iPhone visual confirmation of the new cost section is pending. Phase 19 remains deferred.
 
 Version 1.6.3 puts the dynamic API-equivalent estimate inside the existing project-metrics area. It adds an independently enabled Codex weekly remaining-quota card, clearly labeled as account-wide. The card reads the local Codex app-server rate-limit endpoint over stdio, exposes only the remaining percentage and timestamps, and does not start a new listening port. All 170 N100 tests and the dashboard JavaScript syntax check passed. The installed 1.6.3 CLI restarted `nashiri-core` on the same 8766/9444 ports. Its tailnet API returned a 44% weekly remainder, and a browser render showed both the cost estimate and quota under **案件メトリクス**. The displayed cost continues to update as project records arrive; it was 128.58 USD at the last browser check. All four Monitor local/tailnet URLs returned HTTP 200, and the Serve mappings for 443, 8443, 8444, 9443, and 9444 matched the baseline. iPhone visual confirmation of this layout remains pending. Phase 19 remains deferred.
+
+Version 1.6.4 keeps the last successful weekly-quota percentage and observation time unchanged when a dashboard request fails or Codex omits the weekly window. The server also retains its last successful value for page reloads. A later valid read updates the card normally. The N100 suite passed 171 tests and the dashboard JavaScript syntax check passed. The installed CLI restarted `nashiri-core` on the same 8766/9444 ports; its tailnet API returned a 42% weekly remainder and a browser render showed 42% under **案件メトリクス**. No new Serve entry or listening port was created. Phase 19 remains deferred.

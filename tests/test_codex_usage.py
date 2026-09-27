@@ -74,6 +74,30 @@ class CodexUsageTests(unittest.TestCase):
             app.DashboardHandler.do_GET(fake)
         self.assertEqual(fake._serve_json.call_args.args[0], {"enabled": False})
 
+    def test_refresh_failure_preserves_last_successful_value(self):
+        codex_usage.set_enabled(self.config, True)
+        manager = codex_usage.WeeklyUsageManager()
+        with patch.object(codex_usage, "_configured_command", return_value="codex.exe"), \
+             patch.object(codex_usage, "read_weekly_limit", side_effect=[
+                 {"remaining_percent": 44.0, "scope": "account", "resets_at": None},
+                 None,
+                 RuntimeError("temporary failure"),
+             ]):
+            manager._refresh(self.config)
+            with manager._lock:
+                manager._last_start = time.monotonic()
+            first = manager.snapshot(self.config)
+            manager._refresh(self.config)
+            missing_window = manager.snapshot(self.config)
+            manager._refresh(self.config)
+            failed_request = manager.snapshot(self.config)
+
+        self.assertEqual(first["state"], "ready")
+        for result in (missing_window, failed_request):
+            self.assertEqual(result["state"], "stale")
+            self.assertEqual(result["remaining_percent"], 44.0)
+            self.assertEqual(result["observed_at"], first["observed_at"])
+
 
 if __name__ == "__main__":
     unittest.main()

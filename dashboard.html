@@ -358,6 +358,7 @@
     const codexUsageValue = document.querySelector("#codex-usage-value");
     const codexUsageDetail = document.querySelector("#codex-usage-detail");
     let codexUsageEnabled = null;
+    let codexUsageHasValue = false;
 
     const telemetryCount = document.querySelector("#telemetry-count");
     const telemetryEmpty = document.querySelector("#telemetry-empty");
@@ -747,25 +748,27 @@
           return;
         }
         codexUsageEnabled = true;
-        codexUsageCard.hidden = false;
-        updateMetricCount();
         if (data.state === "calculating") {
-          codexUsageValue.textContent = "取得中です。";
+          if (codexUsageCard.hidden) {
+            codexUsageCard.hidden = false;
+            updateMetricCount();
+          }
           return;
         }
         if (data.state === "error" || data.state === "unavailable"
-            || !Number.isFinite(Number(data.remaining_percent))) {
-          codexUsageValue.textContent = "週間枠を確認できません。";
+            || (data.state === "stale" && codexUsageHasValue)
+            || typeof data.remaining_percent !== "number"
+            || !Number.isFinite(data.remaining_percent)) {
           return;
         }
-        codexUsageValue.textContent = `${Number(data.remaining_percent).toLocaleString("ja-JP", { maximumFractionDigits: 1 })} %`;
-        const reset = data.resets_at ? `枠のリセット: ${formatTimestamp(data.resets_at)}・` : "";
-        const stale = data.state === "stale" ? "・最新値を取得できず、前回値を表示" : "";
-        codexUsageDetail.textContent = `アカウント共通・${reset}取得: ${formatTimestamp(data.observed_at)}${stale}`;
-      } catch (error) {
         codexUsageCard.hidden = false;
-        codexUsageValue.textContent = "週間枠を取得できません。自動的に再試行します。";
         updateMetricCount();
+        codexUsageValue.textContent = `${data.remaining_percent.toLocaleString("ja-JP", { maximumFractionDigits: 1 })} %`;
+        codexUsageHasValue = true;
+        const reset = data.resets_at ? `枠のリセット: ${formatTimestamp(data.resets_at)}・` : "";
+        codexUsageDetail.textContent = `アカウント共通・${reset}取得: ${formatTimestamp(data.observed_at)}`;
+      } catch (error) {
+        // A transient request failure must not replace the last successful value.
       }
     }
 
