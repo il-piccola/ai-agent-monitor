@@ -48,7 +48,7 @@ AGENTS_BLOCK_END = "<!-- ai-agent-monitor:end -->"
 AGENTS_BLOCK = """<!-- ai-agent-monitor:start -->
 ## AI Agent Monitor
 
-For development work in this repository, use the `ai-agent-monitor` repository skill in `.agents/skills/ai-agent-monitor/SKILL.md`. At the start of a new run or when resuming work, run `monitor status` before reporting new monitor state.
+For development work in this repository, use the `ai-agent-monitor` repository skill in `.agents/skills/ai-agent-monitor/SKILL.md`. At the start of a new run or when resuming work, follow the skill's runner-registration step and then run `monitor status` before reporting new monitor state.
 <!-- ai-agent-monitor:end -->"""
 DATA_DIR = PROJECT_ROOT / ".agent-monitor"
 DB_PATH = DATA_DIR / "monitor.db"
