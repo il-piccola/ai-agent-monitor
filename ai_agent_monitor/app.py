@@ -1898,6 +1898,10 @@ def run_resume_worker(attempt_id: int) -> int:
     argv = [
         command,
         "exec",
+        "--sandbox",
+        "workspace-write",
+        "--ask-for-approval",
+        "on-request",
         "-C",
         str(PROJECT_ROOT),
         "resume",
