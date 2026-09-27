@@ -22,6 +22,8 @@ Phase 17 adds a project registry. Its two-project list and dashboard links are v
 
 Phase 18 adds automatic telemetry derived from Monitor's own records. Its values and source labels are verified on the N100 and iPhone.
 
+Version 1.5.1 keeps CLI JSON ASCII-safe so PowerShell can parse Japanese project data even when the installed Python uses CP932 for native stdout. HTTP JSON remains UTF-8.
+
 The dashboard supports progress updates, a current task, unanswered questions, browser-submitted answers, registered artifact snapshots, and project-specific metrics. The installed CLI keeps each project's data and optional dashboard separate. The data is stored locally and the dashboard refreshes automatically.
 
 ## Run the dashboard

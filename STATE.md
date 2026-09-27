@@ -6,9 +6,9 @@
 - Visibility: public
 - Default branch: `main`
 - Formal release: `v1.0.0` published
-- Development package version: `1.5.0`
+- Development package version: `1.5.1`
 - Completed phases: 1 through 18
-- Current phase: Phase 18 verified on N100 and iPhone; Phase 19 not started
+- Current work: verify Monitor adoption in the active `nashiri-core` project; Phase 19 deferred at the human's request
 
 ## Verified baseline
 
@@ -105,4 +105,4 @@ N100 runtime verification: the existing 8765/9443 server was restarted on those 
 
 ## Next task
 
-Phase 19 second-agent portability verification has not started. The N100's installed `uv tool` CLI remains at 1.3.1 because the active `nashiri-core` server was left running; the repository source CLI contains version 1.5.0.
+Complete the active-project trial in `nashiri-core` before Phase 19. It already has Codex onboarding, project-local task/progress/question/artifact records, and the same 8766/9444 remote. Version 1.5.0 was installed and its automatic telemetry returned eight measurements from this real project without a new Serve port. A real PowerShell `monitor status | ConvertFrom-Json` found that Japanese CLI JSON emitted under Python's CP932 stdout could become invalid when PowerShell decodes native output as UTF-8. Version 1.5.1 escapes non-ASCII text in CLI JSON. All 149 tests passed on N100; the installed CLI's `status` and `telemetry` both parsed successfully against the real project. Its 8766/9444 remote returned HTTP 200 with eight telemetry measurements and the existing active task. The 443, 8443, 8444, 9443, and 9444 Serve mappings were preserved. The project's unrelated worktree edits remain untouched; an auto-added `.agent-monitor/.gitignore` line was restored so the worktree matches its pre-trial state. iPhone visual confirmation of the `nashiri-core` dashboard is pending. Phase 19 remains deferred.

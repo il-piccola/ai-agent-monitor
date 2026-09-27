@@ -332,7 +332,7 @@ Do not infer cost, quality, or error rates from incomplete data.
 
 Success condition: useful operational measurements appear without human entry and their provenance is clear.
 
-## Phase 19: Second-agent portability verification
+## Phase 19: Second-agent portability verification (deferred; real-project adoption first)
 
 Verify the agent-neutral contract with one non-Codex CLI-capable agent.
 

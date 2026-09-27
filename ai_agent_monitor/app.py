@@ -4566,20 +4566,22 @@ def serve(port: int) -> None:
 
 
 def main() -> None:
+    # CLI JSON escapes non-ASCII text so Windows PowerShell can parse it even
+    # when Python's native stdout encoding is CP932. HTTP JSON remains UTF-8.
     if len(sys.argv) > 1 and sys.argv[1] == "registry":
         args = parse_registry_args(sys.argv[2:])
         path = registry_path()
         if args.action == "add":
             init_project()
             entry = project_registry.add_project(path, args.url)
-            print(json.dumps(entry, ensure_ascii=False, indent=2))
+            print(json.dumps(entry, ensure_ascii=True, indent=2))
             return
         if args.action == "remove":
             removed = project_registry.remove_project(path, args.project_id)
             print("Project removed." if removed else "Project not found.")
             return
         print(json.dumps({"projects": project_registry.load_entries(path)},
-                         ensure_ascii=False, indent=2))
+                         ensure_ascii=True, indent=2))
         return
 
     if len(sys.argv) > 1 and sys.argv[1] == "runner":
@@ -4593,7 +4595,7 @@ def main() -> None:
                         "adapter": runner["adapter"],
                         "state": runner["state"],
                     },
-                    ensure_ascii=False,
+                    ensure_ascii=True,
                     indent=2,
                 )
             )
@@ -4605,7 +4607,7 @@ def main() -> None:
                         "config": runner_config_public(),
                         **runner_snapshot(),
                     },
-                    ensure_ascii=False,
+                    ensure_ascii=True,
                     indent=2,
                 )
             )
@@ -4614,7 +4616,7 @@ def main() -> None:
             print(
                 json.dumps(
                     set_current_runner_state("completed"),
-                    ensure_ascii=False,
+                    ensure_ascii=True,
                     indent=2,
                 )
             )
@@ -4623,7 +4625,7 @@ def main() -> None:
             print(
                 json.dumps(
                     set_current_runner_state("stopped"),
-                    ensure_ascii=False,
+                    ensure_ascii=True,
                     indent=2,
                 )
             )
@@ -4640,7 +4642,7 @@ def main() -> None:
             return
         if args.action == "preflight":
             result = run_codex_preflight()
-            print(json.dumps(result, ensure_ascii=False, indent=2))
+            print(json.dumps(result, ensure_ascii=True, indent=2))
             if not result["ok"]:
                 raise SystemExit(1)
             return
@@ -4648,7 +4650,7 @@ def main() -> None:
             print(
                 json.dumps(
                     dispatch_resume_requests(force=True),
-                    ensure_ascii=False,
+                    ensure_ascii=True,
                     indent=2,
                 )
             )
@@ -4657,7 +4659,7 @@ def main() -> None:
             print(
                 json.dumps(
                     retry_resume_request(args.request_id),
-                    ensure_ascii=False,
+                    ensure_ascii=True,
                     indent=2,
                 )
             )
@@ -4668,13 +4670,13 @@ def main() -> None:
     if len(sys.argv) > 1 and sys.argv[1] == "notify":
         args = parse_notify_args(sys.argv[2:])
         if args.section == "status":
-            print(json.dumps(notification_config_public(), ensure_ascii=False, indent=2))
+            print(json.dumps(notification_config_public(), ensure_ascii=True, indent=2))
             return
         if args.section == "send":
             print(
                 json.dumps(
                     dispatch_pending_notifications(force=True),
-                    ensure_ascii=False,
+                    ensure_ascii=True,
                     indent=2,
                 )
             )
@@ -4715,7 +4717,7 @@ def main() -> None:
                 print(
                     json.dumps(
                         {"recipients": recipients},
-                        ensure_ascii=False,
+                        ensure_ascii=True,
                         indent=2,
                     )
                 )
@@ -4729,7 +4731,7 @@ def main() -> None:
         args = parse_doctor_args(sys.argv[2:])
         report = doctor_snapshot()
         if args.json:
-            print(json.dumps(report, ensure_ascii=False, indent=2))
+            print(json.dumps(report, ensure_ascii=True, indent=2))
         else:
             print(format_doctor_report(report), end="")
         if report["overall"] == "error":
@@ -4762,7 +4764,7 @@ def main() -> None:
             print(f"Startup launcher installed: {state['launcher_path']}")
             return
         if args.action == "status":
-            print(json.dumps(startup_status(), ensure_ascii=False, indent=2))
+            print(json.dumps(startup_status(), ensure_ascii=True, indent=2))
             return
 
         result = startup_remove()
@@ -4777,7 +4779,7 @@ def main() -> None:
             print(f"Backend: {state['backend_url']}")
             return
         if args.action == "status":
-            print(json.dumps(remote_status(), ensure_ascii=False, indent=2))
+            print(json.dumps(remote_status(), ensure_ascii=True, indent=2))
             return
 
         result = remote_stop()
@@ -4824,15 +4826,15 @@ def main() -> None:
         return
 
     if len(sys.argv) > 1 and sys.argv[1] == "status":
-        print(json.dumps(status_snapshot(), ensure_ascii=False, indent=2))
+        print(json.dumps(status_snapshot(), ensure_ascii=True, indent=2))
         return
 
     if len(sys.argv) > 1 and sys.argv[1] == "telemetry":
-        print(json.dumps(telemetry_snapshot(), ensure_ascii=False, indent=2))
+        print(json.dumps(telemetry_snapshot(), ensure_ascii=True, indent=2))
         return
 
     if len(sys.argv) > 1 and sys.argv[1] == "answers":
-        print(json.dumps({"answers": list_answered_questions()}, ensure_ascii=False, indent=2))
+        print(json.dumps({"answers": list_answered_questions()}, ensure_ascii=True, indent=2))
         return
 
     if len(sys.argv) > 1 and sys.argv[1] == "notifications":
@@ -4840,7 +4842,7 @@ def main() -> None:
         print(
             json.dumps(
                 {"notifications": list_notification_outbox(status=args.status, limit=args.limit)},
-                ensure_ascii=False,
+                ensure_ascii=True,
                 indent=2,
             )
         )
@@ -4875,7 +4877,7 @@ def main() -> None:
         return
 
     if len(sys.argv) > 1 and sys.argv[1] == "metrics":
-        print(json.dumps({"metrics": list_metrics()}, ensure_ascii=False, indent=2))
+        print(json.dumps({"metrics": list_metrics()}, ensure_ascii=True, indent=2))
         return
 
     args = parse_server_args(sys.argv[1:])

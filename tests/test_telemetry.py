@@ -140,6 +140,25 @@ class TelemetryTests(unittest.TestCase):
         self.assertEqual(json.loads(output.getvalue())["measurements"], [])
         self.assertFalse(self.db.exists())
 
+    def test_cli_json_is_ascii_safe_for_windows_powershell(self) -> None:
+        monitor.ask_question("日本語の質問ですか？")
+        for command in ("status", "telemetry"):
+            with self.subTest(command=command), \
+                 patch.object(sys, "argv", ["monitor", command]), \
+                 redirect_stdout(io.StringIO()) as output:
+                monitor.main()
+            raw = output.getvalue()
+            self.assertTrue(raw.isascii())
+            decoded = json.loads(raw)
+            if command == "status":
+                self.assertEqual(decoded["open_questions"][0]["question"],
+                                 "日本語の質問ですか？")
+            else:
+                self.assertEqual(
+                    measurement(decoded, "question.open_count")["label"],
+                    "未回答の質問",
+                )
+
     def test_invalid_timestamps_are_not_reported_as_durations(self) -> None:
         self.assertIsNone(telemetry._seconds("invalid", "2026-09-27T00:00:00Z"))
         self.assertIsNone(telemetry._seconds(
