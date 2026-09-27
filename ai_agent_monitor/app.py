@@ -4284,6 +4284,14 @@ def serve(port: int) -> None:
         daemon=True,
     )
     notification_thread.start()
+    stop_runners = threading.Event()
+    runner_thread = threading.Thread(
+        target=_runner_dispatch_loop,
+        args=(stop_runners,),
+        name="ai-agent-monitor-runners",
+        daemon=True,
+    )
+    runner_thread.start()
     url = f"http://{HOST}:{port}"
 
     print(f"AI Agent Monitor is running at {url}")
@@ -4295,7 +4303,9 @@ def serve(port: int) -> None:
         print("\nStopping AI Agent Monitor.")
     finally:
         stop_notifications.set()
+        stop_runners.set()
         notification_thread.join(timeout=2)
+        runner_thread.join(timeout=2)
         server.server_close()
 
 
