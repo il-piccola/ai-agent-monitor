@@ -303,6 +303,12 @@ The monitor server polls pending notification deliveries every five seconds. A f
 
 `.agent-monitor/notifications.json` is project-local and ignored by Git. It contains no bot token or SMTP password.
 
+### Telegram answers
+
+Phase 20 adds optional inbound replies to the existing Telegram notification. A sent question notification stores its Telegram chat ID and message ID with the delivery. Only a text reply from the configured private chat to that exact message can answer the corresponding question. The answer uses the existing `answer_question` transaction, so dashboard answers, answer events, notification cancellation, and runner resume requests share one state model.
+
+The server polls Bot API `getUpdates` and persists the next update offset in SQLite. Duplicate updates and second answers cannot create another answer. Inbound polling is separately enabled through `monitor notify telegram replies on`; outbound Telegram notifications remain available when replies are off. The bot token remains in the environment. This uses outbound HTTPS only, and does not require a public webhook or a new Tailscale Serve port. Run only one reply poller per bot token; concurrent projects using the same bot can consume one another's updates.
+
 
 ### Email recipient fan-out
 

@@ -22,7 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
-from contextlib import closing, contextmanager
+from contextlib import closing, contextmanager, nullcontext
 from datetime import datetime, timezone
 from email.message import EmailMessage
 from email.utils import parseaddr
@@ -576,6 +576,25 @@ def connect_db() -> sqlite3.Connection:
         """
     )
     _ensure_notification_deliveries_target(connection)
+    delivery_columns = {
+        row[1] for row in connection.execute("PRAGMA table_info(notification_deliveries)")
+    }
+    if "telegram_message_id" not in delivery_columns:
+        connection.execute(
+            "ALTER TABLE notification_deliveries ADD COLUMN telegram_message_id INTEGER"
+        )
+    if "telegram_chat_id" not in delivery_columns:
+        connection.execute(
+            "ALTER TABLE notification_deliveries ADD COLUMN telegram_chat_id TEXT"
+        )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS telegram_inbox_cursor (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            next_offset INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
     connection.commit()
     return connection
 
@@ -758,6 +777,7 @@ def complete_task() -> bool:
 
 
 TELEGRAM_TOKEN_ENV = "AI_AGENT_MONITOR_TELEGRAM_BOT_TOKEN"
+TELEGRAM_REPLY_MAPPING_LOCK = threading.RLock()
 SMTP_PASSWORD_ENV = "AI_AGENT_MONITOR_SMTP_PASSWORD"
 NOTIFICATION_POLL_SECONDS = 5.0
 NOTIFICATION_RETRY_SECONDS = 60.0
@@ -772,6 +792,7 @@ def default_notification_config() -> dict[str, object]:
         "telegram": {
             "enabled": False,
             "chat_id": None,
+            "replies_enabled": False,
         },
         "email": {
             "enabled": False,
@@ -1007,6 +1028,8 @@ def set_notification_channel_enabled(channel: str, enabled: bool) -> dict[str, o
                 )
 
     settings["enabled"] = enabled
+    if channel == "telegram" and not enabled:
+        settings["replies_enabled"] = False
     write_notification_config(config)
 
     if not enabled and DB_PATH.is_file():
@@ -1035,6 +1058,24 @@ def set_notification_channel_enabled(channel: str, enabled: bool) -> dict[str, o
                 _refresh_notification_status(connection, notification_id)
 
     return settings
+
+
+def set_telegram_replies_enabled(enabled: bool) -> dict[str, object]:
+    config = read_notification_config()
+    telegram = config["telegram"]
+    if enabled:
+        if telegram.get("enabled") is not True or not telegram.get("chat_id"):
+            raise RuntimeError("Enable Telegram notifications and configure a chat first.")
+        if not os.environ.get(TELEGRAM_TOKEN_ENV):
+            raise RuntimeError(f"Set {TELEGRAM_TOKEN_ENV} before enabling replies.")
+        # Create the durable cursor before the server starts consuming updates.
+        with database_session() as connection:
+            connection.execute(
+                "INSERT OR IGNORE INTO telegram_inbox_cursor (id, next_offset) VALUES (1, 0)"
+            )
+    telegram["replies_enabled"] = enabled
+    write_notification_config(config)
+    return telegram
 
 
 def notification_config_public() -> dict[str, object]:
@@ -1265,7 +1306,9 @@ def list_notification_deliveries(
             last_attempt_at,
             delivered_at,
             cancelled_at,
-            last_error
+            last_error,
+            telegram_message_id,
+            telegram_chat_id
         FROM notification_deliveries
     """
     if clauses:
@@ -1289,6 +1332,8 @@ def list_notification_deliveries(
             "delivered_at": row[8],
             "cancelled_at": row[9],
             "last_error": row[10],
+            "telegram_message_id": row[11],
+            "telegram_chat_id": row[12],
         }
         for row in rows
     ]
@@ -1361,6 +1406,8 @@ def record_notification_delivery_attempt(
     *,
     delivered: bool,
     error: str | None = None,
+    telegram_message_id: int | None = None,
+    telegram_chat_id: str | None = None,
 ) -> dict[str, object]:
     attempted_at = utc_now()
     with database_session() as connection:
@@ -1401,10 +1448,15 @@ def record_notification_delivery_attempt(
                     attempt_count = ?,
                     last_attempt_at = ?,
                     delivered_at = ?,
+                    telegram_message_id = ?,
+                    telegram_chat_id = ?,
                     last_error = NULL
                 WHERE id = ?
                 """,
-                (attempt_count, attempted_at, attempted_at, delivery_id),
+                (
+                    attempt_count, attempted_at, attempted_at,
+                    telegram_message_id, telegram_chat_id, delivery_id,
+                ),
             )
             status = "delivered"
         else:
@@ -1445,7 +1497,9 @@ def _notification_dashboard_url() -> str | None:
     return url if isinstance(url, str) and url else None
 
 
-def _notification_text(payload: dict[str, object]) -> str:
+def _notification_text(
+    payload: dict[str, object], *, telegram_reply: bool = False
+) -> str:
     project = payload.get("project")
     project_name = (
         project.get("name")
@@ -1454,18 +1508,36 @@ def _notification_text(payload: dict[str, object]) -> str:
     )
     question_id = payload.get("question_id")
     question = payload.get("question")
+    if isinstance(question_id, int) and DB_PATH.is_file():
+        with database_session() as connection:
+            translation = connection.execute(
+                """
+                SELECT translation.ja_text
+                FROM questions AS question
+                JOIN display_translations AS translation
+                  ON translation.entity_type = 'question'
+                 AND translation.entity_id = question.id
+                 AND translation.source_text = question.question
+                WHERE question.id = ?
+                """,
+                (question_id,),
+            ).fetchone()
+        if translation is not None:
+            question = translation[0]
     lines = [
-        "AI Agent Monitor",
-        f"Project: {project_name}",
-        f"Question #{question_id}: {question}",
+        "AIエージェント・モニター",
+        f"案件: {project_name}",
+        f"質問 #{question_id}: {question}",
     ]
+    if telegram_reply:
+        lines.append("この通知に返信すると回答を保存します。")
     dashboard_url = _notification_dashboard_url()
     if dashboard_url:
-        lines.extend(["", f"Dashboard: {dashboard_url}"])
+        lines.extend(["", f"画面: {dashboard_url}"])
     return "\n".join(lines)
 
 
-def _send_telegram_notification(payload: dict[str, object]) -> None:
+def _send_telegram_notification(payload: dict[str, object]) -> int | None:
     config = read_notification_config()["telegram"]
     if config.get("enabled") is not True:
         raise RuntimeError("Telegram notifications are disabled.")
@@ -1478,17 +1550,19 @@ def _send_telegram_notification(payload: dict[str, object]) -> None:
     if not token:
         raise RuntimeError(f"{TELEGRAM_TOKEN_ENV} is not set.")
 
-    text = _notification_text(payload)
+    text = _notification_text(
+        payload, telegram_reply=config.get("replies_enabled") is True
+    )
     if len(text) > 4096:
         text = text[:4093] + "..."
 
-    body = json.dumps(
-        {
-            "chat_id": chat_id,
-            "text": text,
-        },
-        ensure_ascii=False,
-    ).encode("utf-8")
+    message: dict[str, object] = {"chat_id": chat_id, "text": text}
+    if config.get("replies_enabled") is True:
+        message["reply_markup"] = {
+            "force_reply": True,
+            "input_field_placeholder": "回答を入力してください",
+        }
+    body = json.dumps(message, ensure_ascii=False).encode("utf-8")
     request = urllib.request.Request(
         f"https://api.telegram.org/bot{token}/sendMessage",
         data=body,
@@ -1515,6 +1589,154 @@ def _send_telegram_notification(payload: dict[str, object]) -> None:
         raise RuntimeError(
             f"Telegram sendMessage failed: {description or 'unknown error'}"
         )
+    sent = result.get("result")
+    message_id = sent.get("message_id") if isinstance(sent, dict) else None
+    if isinstance(message_id, int) and not isinstance(message_id, bool):
+        return message_id
+    if config.get("replies_enabled") is True:
+        raise RuntimeError("Telegram did not return the sent message ID.")
+    return None
+
+
+def _telegram_api_request(
+    method: str, payload: dict[str, object], *, timeout: int = 10
+) -> object:
+    token = os.environ.get(TELEGRAM_TOKEN_ENV)
+    if not token:
+        raise RuntimeError(f"{TELEGRAM_TOKEN_ENV} is not set.")
+    request = urllib.request.Request(
+        f"https://api.telegram.org/bot{token}/{method}",
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            result = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(f"Telegram {method} failed (HTTP {exc.code}).") from exc
+    except (OSError, urllib.error.URLError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"Telegram {method} failed.") from exc
+    if not isinstance(result, dict) or result.get("ok") is not True:
+        raise RuntimeError(f"Telegram {method} failed.")
+    return result.get("result")
+
+
+def _telegram_answer_from_update(update: dict[str, object], chat_id: str) -> bool:
+    message = update.get("message")
+    if not isinstance(message, dict):
+        return False
+    chat = message.get("chat")
+    sender = message.get("from")
+    if (
+        not isinstance(chat, dict)
+        or chat.get("type") != "private"
+        or str(chat.get("id")) != chat_id
+        or not isinstance(sender, dict)
+        or sender.get("is_bot") is True
+        or sender.get("id") != chat.get("id")
+    ):
+        return False
+    answer = message.get("text")
+    reply_to = message.get("reply_to_message")
+    if (
+        not isinstance(answer, str)
+        or not answer.strip()
+        or answer.lstrip().startswith("/")
+        or not isinstance(reply_to, dict)
+        or not isinstance(reply_to.get("message_id"), int)
+    ):
+        return False
+    with TELEGRAM_REPLY_MAPPING_LOCK:
+        with database_session() as connection:
+            row = connection.execute(
+                """
+                SELECT event.entity_id
+                FROM notification_deliveries AS delivery
+                JOIN notification_outbox AS event ON event.id = delivery.notification_id
+                WHERE delivery.channel = 'telegram'
+                  AND delivery.status = 'delivered'
+                  AND delivery.telegram_message_id = ?
+                  AND delivery.telegram_chat_id = ?
+                  AND event.event_type = 'question.created'
+                  AND event.entity_type = 'question'
+                """,
+                (reply_to["message_id"], chat_id),
+            ).fetchone()
+    if row is None:
+        return False
+    question_id = int(row[0])
+    try:
+        answer_question(question_id, answer)
+    except QuestionClosedError:
+        confirmation = f"質問 #{question_id} は回答済みです。"
+    else:
+        confirmation = f"質問 #{question_id} の回答を保存しました。"
+    try:
+        _telegram_api_request(
+            "sendMessage", {"chat_id": chat_id, "text": confirmation}
+        )
+    except RuntimeError:
+        # The answer is already committed. A failed acknowledgement must not
+        # cause the same Telegram update to create another answer.
+        pass
+    return True
+
+
+def poll_telegram_replies_once() -> dict[str, int]:
+    telegram = read_notification_config()["telegram"]
+    if telegram.get("enabled") is not True or telegram.get("replies_enabled") is not True:
+        return {"updates": 0, "answers": 0}
+    chat_id = telegram.get("chat_id")
+    if not isinstance(chat_id, str) or not chat_id:
+        raise RuntimeError("Telegram chat ID is not configured.")
+    with database_session() as connection:
+        connection.execute(
+            "INSERT OR IGNORE INTO telegram_inbox_cursor (id, next_offset) VALUES (1, 0)"
+        )
+        next_offset = int(connection.execute(
+            "SELECT next_offset FROM telegram_inbox_cursor WHERE id = 1"
+        ).fetchone()[0])
+    updates = _telegram_api_request(
+        "getUpdates",
+        {
+            "offset": next_offset,
+            "limit": 100,
+            "timeout": 3,
+            "allowed_updates": ["message"],
+        },
+        timeout=8,
+    )
+    if not isinstance(updates, list):
+        raise RuntimeError("Telegram getUpdates returned unexpected data.")
+    processed = 0
+    answered = 0
+    for update in updates:
+        if not isinstance(update, dict):
+            continue
+        update_id = update.get("update_id")
+        if not isinstance(update_id, int) or update_id < next_offset:
+            continue
+        if _telegram_answer_from_update(update, chat_id):
+            answered += 1
+        next_offset = update_id + 1
+        with database_session() as connection:
+            connection.execute(
+                "UPDATE telegram_inbox_cursor SET next_offset = ? WHERE id = 1",
+                (next_offset,),
+            )
+        processed += 1
+    return {"updates": processed, "answers": answered}
+
+
+def _telegram_reply_loop(stop_event: threading.Event) -> None:
+    while not stop_event.wait(2):
+        try:
+            poll_telegram_replies_once()
+        except Exception:
+            # Poll failures are retried; the persisted offset is advanced only
+            # after an update has been processed successfully.
+            continue
 
 
 def _send_email_notification(
@@ -1654,23 +1876,38 @@ def dispatch_pending_notifications(
         channel = str(job["channel"])
         target = str(job["target"])
         payload = job["payload"]
-        try:
-            if channel == "telegram":
-                _send_telegram_notification(payload)
-            elif channel == "email":
-                _send_email_notification(payload, target)
+        telegram_message_id = None
+        with TELEGRAM_REPLY_MAPPING_LOCK if channel == "telegram" else nullcontext():
+            try:
+                if channel == "telegram":
+                    telegram_message_id = _send_telegram_notification(payload)
+                elif channel == "email":
+                    _send_email_notification(payload, target)
+                else:
+                    raise RuntimeError(f"Unsupported notification channel: {channel}")
+            except Exception as exc:
+                record_notification_delivery_attempt(
+                    delivery_id,
+                    delivered=False,
+                    error=str(exc),
+                )
+                failed += 1
             else:
-                raise RuntimeError(f"Unsupported notification channel: {channel}")
-        except Exception as exc:
-            record_notification_delivery_attempt(
-                delivery_id,
-                delivered=False,
-                error=str(exc),
-            )
-            failed += 1
-        else:
-            record_notification_delivery_attempt(delivery_id, delivered=True)
-            delivered += 1
+                record_notification_delivery_attempt(
+                    delivery_id,
+                    delivered=True,
+                    telegram_message_id=(
+                        telegram_message_id
+                        if isinstance(telegram_message_id, int)
+                        and not isinstance(telegram_message_id, bool)
+                        else None
+                    ),
+                    telegram_chat_id=(
+                        str(read_notification_config()["telegram"]["chat_id"])
+                        if channel == "telegram" else None
+                    ),
+                )
+                delivered += 1
 
     return {
         "attempted": attempted,
@@ -4546,6 +4783,11 @@ def parse_notify_args(argv: list[str]) -> argparse.Namespace:
     telegram_actions.add_parser("discover", help="Discover the latest chat that messaged the bot")
     telegram_actions.add_parser("on", help="Enable Telegram for future notifications")
     telegram_actions.add_parser("off", help="Disable Telegram and cancel pending Telegram deliveries")
+    replies = telegram_actions.add_parser("replies", help="Receive answers sent as Telegram replies")
+    reply_actions = replies.add_subparsers(dest="replies_action", required=True)
+    reply_actions.add_parser("on", help="Accept replies to this project's notifications")
+    reply_actions.add_parser("off", help="Stop accepting Telegram replies")
+    reply_actions.add_parser("poll", help="Check for Telegram replies once")
 
     email = subparsers.add_parser("email", help="Configure optional email notifications")
     email_actions = email.add_subparsers(dest="action", required=True)
@@ -4659,6 +4901,13 @@ def serve(port: int) -> None:
         daemon=True,
     )
     notification_thread.start()
+    telegram_thread = threading.Thread(
+        target=_telegram_reply_loop,
+        args=(stop_notifications,),
+        name="ai-agent-monitor-telegram-replies",
+        daemon=True,
+    )
+    telegram_thread.start()
     stop_runners = threading.Event()
     runner_thread = threading.Thread(
         target=_runner_dispatch_loop,
@@ -4680,6 +4929,7 @@ def serve(port: int) -> None:
         stop_notifications.set()
         stop_runners.set()
         notification_thread.join(timeout=2)
+        telegram_thread.join(timeout=2)
         runner_thread.join(timeout=2)
         server.server_close()
 
@@ -4801,6 +5051,14 @@ def main() -> None:
             )
             return
         if args.section == "telegram":
+            if args.action == "replies":
+                if args.replies_action == "poll":
+                    print(json.dumps(poll_telegram_replies_once(), ensure_ascii=True))
+                else:
+                    enabled = args.replies_action == "on"
+                    set_telegram_replies_enabled(enabled)
+                    print(f"Telegram replies {'enabled' if enabled else 'disabled'}.")
+                return
             if args.action == "set":
                 configure_telegram(args.chat_id)
                 print("Telegram chat ID configured.")

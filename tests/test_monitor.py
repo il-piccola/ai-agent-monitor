@@ -1604,8 +1604,96 @@ class NotificationOutboxTests(MonitorStorageTestCase):
         request = urlopen.call_args.args[0]
         body = json.loads(request.data.decode("utf-8"))
         self.assertEqual(body["chat_id"], "123456")
-        self.assertIn("Question #7: Choose A or B?", body["text"])
+        self.assertIn("質問 #7: Choose A or B?", body["text"])
         self.assertIn("test-token", request.full_url)
+
+    def test_telegram_reply_answers_only_matching_private_chat_notification(self) -> None:
+        monitor.set_telegram_replies_enabled(True)
+        question = monitor.ask_question("Choose A or B?")
+        with patch.object(monitor, "_send_telegram_notification", return_value=77):
+            self.assertEqual(
+                monitor.dispatch_pending_notifications(force=True),
+                {"attempted": 1, "delivered": 1, "failed": 0},
+            )
+        delivery = monitor.list_notification_deliveries()[0]
+        self.assertEqual(delivery["telegram_message_id"], 77)
+        self.assertEqual(delivery["telegram_chat_id"], "123456")
+        update = {
+            "message": {
+                "chat": {"id": 123456, "type": "private"},
+                "from": {"id": 123456, "is_bot": False},
+                "text": "A",
+                "reply_to_message": {"message_id": 77},
+            }
+        }
+        with patch.object(monitor, "_telegram_api_request") as acknowledge:
+            self.assertFalse(monitor._telegram_answer_from_update(
+                {**update, "message": {**update["message"], "chat": {"id": 999, "type": "private"}}},
+                "123456",
+            ))
+            self.assertFalse(monitor._telegram_answer_from_update(
+                {**update, "message": {**update["message"], "reply_to_message": {"message_id": 78}}},
+                "123456",
+            ))
+            self.assertFalse(monitor._telegram_answer_from_update(
+                {**update, "message": {**update["message"], "text": "/start"}},
+                "123456",
+            ))
+            self.assertTrue(monitor._telegram_answer_from_update(update, "123456"))
+            self.assertTrue(monitor._telegram_answer_from_update(update, "123456"))
+        self.assertEqual(monitor.list_open_questions(), [])
+        self.assertEqual(monitor.list_answered_questions()[0]["answer"], "A")
+        self.assertEqual(len(monitor.list_answered_questions()), 1)
+        self.assertEqual(acknowledge.call_count, 2)
+
+    def test_telegram_ack_failure_keeps_saved_answer(self) -> None:
+        monitor.set_telegram_replies_enabled(True)
+        question = monitor.ask_question("A or B?")
+        with patch.object(monitor, "_send_telegram_notification", return_value=91):
+            monitor.dispatch_pending_notifications(force=True)
+        update = {
+            "message": {
+                "chat": {"id": 123456, "type": "private"},
+                "from": {"id": 123456, "is_bot": False},
+                "text": "B",
+                "reply_to_message": {"message_id": 91},
+            }
+        }
+        with patch.object(monitor, "_telegram_api_request", side_effect=RuntimeError("offline")):
+            self.assertTrue(monitor._telegram_answer_from_update(update, "123456"))
+        self.assertEqual(monitor.list_answered_questions()[0]["answer"], "B")
+        self.assertEqual(monitor.list_open_questions(), [])
+
+    def test_telegram_poll_cursor_prevents_reprocessing_update(self) -> None:
+        monitor.set_telegram_replies_enabled(True)
+        update = {"update_id": 42, "message": {"text": "/start"}}
+        with (
+            patch.object(monitor, "_telegram_api_request", return_value=[update]) as request,
+            patch.object(monitor, "_telegram_answer_from_update", return_value=False) as answer,
+        ):
+            first = monitor.poll_telegram_replies_once()
+            second = monitor.poll_telegram_replies_once()
+        self.assertEqual(first, {"updates": 1, "answers": 0})
+        self.assertEqual(second, {"updates": 0, "answers": 0})
+        self.assertEqual(request.call_args_list[1].args[1]["offset"], 43)
+        answer.assert_called_once()
+
+    def test_telegram_notification_requests_reply_and_records_message_id(self) -> None:
+        monitor.set_telegram_replies_enabled(True)
+        response = MagicMock()
+        response.__enter__.return_value.read.return_value = (
+            b'{"ok":true,"result":{"message_id":77}}'
+        )
+        payload = {
+            "project": {"project_id": "abc", "name": "demo"},
+            "question_id": 7,
+            "question": "Which value?",
+        }
+        with patch.object(monitor.urllib.request, "urlopen", return_value=response) as urlopen:
+            self.assertEqual(monitor._send_telegram_notification(payload), 77)
+        body = json.loads(urlopen.call_args.args[0].data.decode("utf-8"))
+        self.assertTrue(body["reply_markup"]["force_reply"])
+        self.assertIn("この通知に返信", body["text"])
 
     def test_email_transport_uses_starttls_and_send_message(self) -> None:
         monitor.configure_email(

@@ -6,9 +6,9 @@
 - Visibility: public
 - Default branch: `main`
 - Formal release: `v1.0.0` published
-- Development package version: `1.5.5`
+- Development package version: `1.6.0`
 - Completed phases: 1 through 18
-- Current work: verify Monitor adoption in the active `nashiri-core` project; Phase 19 deferred at the human's request
+- Current work: Phase 20 two-way Telegram answers; Phase 19 remains deferred at the human's request
 
 ## Verified baseline
 
@@ -112,3 +112,7 @@ The human then reported that the actual recent progress remained unreadable beca
 Version 1.5.4 also adds Japanese display translations for the current task, open questions, and artifact labels while retaining the original values. The N100 suite passes 156 tests, including translation preservation, CLI syntax, and replacement-task safety. The installed 1.5.4 CLI restarted the real project's remote on the same 8766/9444 ports. Its active task, open question #3, and latest artifact #21 now have Japanese display text; their English originals remain in the API. Progress translations cover the 48 records present at the last N100 check. The 9444 HTML uses all four translated display fields, and the task, questions, artifact, and progress APIs return their translations over tailnet. The project-local agent contract now instructs future agents to write task titles, progress, questions, and artifact labels in Japanese. A concurrent agent is still adding progress, so any new English-only records need a Japanese translation until that agent picks up the revised contract. iPhone visual confirmation remains pending. Phase 19 remains deferred.
 
 Version 1.5.5 shows only the newest progress event by default and puts older events in a collapsible section. The section's open state survives ordinary three-second refreshes. No new server or Serve port is needed. All 156 tests and the dashboard JavaScript syntax check passed on N100. The installed CLI was updated to 1.5.5; the `nashiri-core` remote returned on the same backend 8766 and HTTPS 9444, where the localized HTML includes the collapsible progress section and HTTP returned 200. The API still returned 48 progress records. iPhone visual verification is pending. Phase 19 remains deferred.
+
+## Phase 20 in progress
+
+Version 1.6.0 adds an opt-in Telegram reply receiver. Outgoing question notifications can request a reply and persist the bot message ID and chat ID with the delivery. The receiver only accepts text from the configured private chat replying to the exact delivered notification, persists the Telegram update offset, and calls the existing answer transaction. No webhook or new Serve port is used. All 160 standard-library tests pass on N100. The installed 1.6.0 CLI restored `nashiri-core` on the same 8766/9444 remote, with inbound replies still disabled there. In the disposable `phase15-notification-test` project, Telegram replies were enabled, a new Japanese test question (#6) was sent with one successful delivery, the reply mapping was stored, and a one-shot poll reached the Bot API successfully. The human's Telegram reply and answer-path verification are pending. Phase 19 remains deferred.
