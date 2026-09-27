@@ -90,7 +90,9 @@ Ask only when the answer materially affects the work and cannot be determined fr
 
 Write enough context into the question for the human to answer from the dashboard. Do not invent the human's answer.
 
-If other independent work can continue, continue it. If the decision blocks the task, leave the task active and end or pause the agent run as appropriate for the runner. The monitor does not automatically resume an agent.
+If other independent work can continue, continue it. If the decision blocks the task, leave the task active and end or pause the agent run as appropriate for the runner.
+
+Projects may configure an adapter-specific automatic resume policy. The agent-neutral contract does not guess runner identity. Codex projects use their repository skill to register the current Codex thread before a question is created.
 
 On a later run, use `monitor status` first. Match answers to questions by their stable question IDs. `monitor answers` remains available when older answered questions need to be inspected.
 
@@ -132,10 +134,11 @@ A task that requires no human decision should normally complete without creating
 
 The monitor stores operational state. Project files such as `STATE.md` remain responsible for durable project handoff instructions when the project uses them.
 
+The monitor currently supports durable Telegram notifications, optional email, and an opt-in Codex automatic-resume adapter.
+
 The monitor does not currently:
 
-- restart or resume an agent automatically
-- send Slack, Discord, or Telegram notifications
+- automatically resume an unregistered or generic agent
 - calculate LLM cost automatically
 - orchestrate multiple agents
 
