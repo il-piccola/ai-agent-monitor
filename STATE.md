@@ -65,7 +65,7 @@ Safety behavior covered by tests:
 - runner config is project-local and ignored by Git
 - doctor remains read-only and reports runner configuration/recovery warnings
 
-The standard-library suite contains 131 tests.
+The standard-library suite contains 133 tests.
 
 ## Current Codex integration basis
 
@@ -77,11 +77,13 @@ The first N100 preflight stopped before any real Codex task was launched. The in
 
 No Phase 16 Codex task, human question, resume request, or automatic resume was executed during that failed preflight. The disposable 8767/9445 remote was stopped, production 8765/9443 and `nashiri-core` 8766/9444 remained HTTP 200, existing Serve mappings were restored, and the repository remained clean.
 
-Version `1.3.1` changes the worker permission selection to Codex config overrides instead of the unsupported CLI flag:
+Version `1.3.1` uses Codex config overrides instead of the unsupported post-`exec` approval flag:
 
 ```text
 codex -c sandbox_mode="workspace-write" -c approval_policy="never" exec ...
 ```
+
+`monitor runner preflight` now executes a harmless Codex turn through the same shared argv builder used by the real resume worker. This prevents the N100 verification command from drifting away from the production adapter again.
 
 The sandbox remains workspace-scoped. Because automatic resume is non-interactive, the approval policy is `never`: the worker cannot pause for an approval UI, and it does not receive danger-full-access.
 
