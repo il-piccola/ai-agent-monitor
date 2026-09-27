@@ -1781,14 +1781,25 @@ def ask_question(question: str) -> dict[str, object]:
     created_at = utc_now()
 
     with database_session() as connection:
+        runner = _runner_for_current_process(connection)
+        runner_id = int(runner[0]) if runner is not None else None
         cursor = connection.execute(
             """
-            INSERT INTO questions (question, status, created_at)
-            VALUES (?, 'open', ?)
+            INSERT INTO questions (question, status, created_at, runner_id)
+            VALUES (?, 'open', ?, ?)
             """,
-            (question, created_at),
+            (question, created_at, runner_id),
         )
         question_id = int(cursor.lastrowid)
+        if runner_id is not None:
+            connection.execute(
+                """
+                UPDATE agent_runners
+                SET state = 'waiting_for_human', updated_at = ?, last_error = NULL
+                WHERE id = ?
+                """,
+                (created_at, runner_id),
+            )
         _enqueue_notification_event(
             connection,
             event_type="question.created",
@@ -1840,7 +1851,7 @@ def answer_question(question_id: int, answer: str) -> dict[str, object]:
 
     with database_session() as connection:
         row = connection.execute(
-            "SELECT question, status FROM questions WHERE id = ?",
+            "SELECT question, status, runner_id FROM questions WHERE id = ?",
             (question_id,),
         ).fetchone()
 
@@ -1857,6 +1868,60 @@ def answer_question(question_id: int, answer: str) -> dict[str, object]:
             """,
             (answer, answered_at, question_id),
         )
+        answer_cursor = connection.execute(
+            """
+            INSERT INTO answer_events (question_id, answer, answered_at)
+            VALUES (?, ?, ?)
+            """,
+            (question_id, answer, answered_at),
+        )
+        answer_event_id = int(answer_cursor.lastrowid)
+
+        runner_id = int(row[2]) if row[2] is not None else None
+        if runner_id is not None:
+            runner = connection.execute(
+                "SELECT state FROM agent_runners WHERE id = ?",
+                (runner_id,),
+            ).fetchone()
+            active_task = connection.execute(
+                "SELECT 1 FROM current_task WHERE id = 1"
+            ).fetchone()
+
+            request_status = "pending"
+            request_reason = None
+            if active_task is None:
+                request_status = "cancelled"
+                request_reason = "no_active_task"
+            elif runner is None:
+                request_status = "cancelled"
+                request_reason = "runner_missing"
+            elif runner[0] != "waiting_for_human":
+                request_status = "cancelled"
+                request_reason = f"runner_state_{runner[0]}"
+
+            connection.execute(
+                """
+                INSERT INTO resume_requests (
+                    answer_event_id,
+                    question_id,
+                    runner_id,
+                    status,
+                    reason,
+                    created_at,
+                    completed_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    answer_event_id,
+                    question_id,
+                    runner_id,
+                    request_status,
+                    request_reason,
+                    answered_at,
+                    answered_at if request_status == "cancelled" else None,
+                ),
+            )
         notification = connection.execute(
             """
             SELECT id
