@@ -1570,6 +1570,209 @@ def _notification_dispatch_loop(stop_event: threading.Event) -> None:
             continue
 
 
+RUNNER_STATES = {"running", "waiting_for_human", "stopped", "completed", "failed"}
+RESUME_REQUEST_STATES = {"pending", "claimed", "running", "completed", "cancelled", "uncertain"}
+CODEX_THREAD_ID_ENV = "CODEX_THREAD_ID"
+
+
+def register_runner(adapter: str, external_id: str | None = None) -> dict[str, object]:
+    adapter = adapter.strip().lower()
+    if adapter != "codex":
+        raise ValueError("The first runner adapter supports only codex.")
+
+    if external_id is None:
+        external_id = os.environ.get(CODEX_THREAD_ID_ENV)
+    external_id = external_id.strip() if external_id else ""
+    if not external_id:
+        raise RuntimeError(
+            f"{CODEX_THREAD_ID_ENV} is not available. Run runner registration from a Codex shell tool."
+        )
+
+    now = utc_now()
+    with database_session() as connection:
+        connection.execute(
+            """
+            INSERT INTO agent_runners (
+                adapter, external_id, state, created_at, updated_at, last_error
+            )
+            VALUES (?, ?, 'running', ?, ?, NULL)
+            ON CONFLICT(adapter, external_id) DO UPDATE SET
+                state = 'running',
+                updated_at = excluded.updated_at,
+                last_error = NULL
+            """,
+            (adapter, external_id, now, now),
+        )
+        row = connection.execute(
+            """
+            SELECT id, adapter, external_id, state, created_at, updated_at, last_error
+            FROM agent_runners
+            WHERE adapter = ? AND external_id = ?
+            """,
+            (adapter, external_id),
+        ).fetchone()
+
+    return {
+        "id": row[0],
+        "adapter": row[1],
+        "external_id": row[2],
+        "state": row[3],
+        "created_at": row[4],
+        "updated_at": row[5],
+        "last_error": row[6],
+    }
+
+
+def _runner_for_current_process(
+    connection: sqlite3.Connection,
+) -> tuple[object, ...] | None:
+    external_id = os.environ.get(CODEX_THREAD_ID_ENV)
+    if not external_id:
+        return None
+    return connection.execute(
+        """
+        SELECT id, adapter, external_id, state, created_at, updated_at, last_error
+        FROM agent_runners
+        WHERE adapter = 'codex' AND external_id = ?
+        """,
+        (external_id,),
+    ).fetchone()
+
+
+def set_current_runner_state(
+    state: str,
+    *,
+    error: str | None = None,
+) -> dict[str, object]:
+    if state not in RUNNER_STATES:
+        raise ValueError(f"Invalid runner state: {state}")
+
+    now = utc_now()
+    with database_session() as connection:
+        row = _runner_for_current_process(connection)
+        if row is None:
+            raise RuntimeError(
+                "No registered Codex runner matches the current CODEX_THREAD_ID."
+            )
+        runner_id = int(row[0])
+        connection.execute(
+            """
+            UPDATE agent_runners
+            SET state = ?, updated_at = ?, last_error = ?
+            WHERE id = ?
+            """,
+            (state, now, error, runner_id),
+        )
+        if state == "completed":
+            connection.execute(
+                """
+                UPDATE resume_requests
+                SET status = 'completed', completed_at = ?
+                WHERE runner_id = ? AND status IN ('claimed', 'running')
+                """,
+                (now, runner_id),
+            )
+
+    return {
+        "id": runner_id,
+        "adapter": row[1],
+        "external_id": row[2],
+        "state": state,
+        "updated_at": now,
+        "last_error": error,
+    }
+
+
+def list_runners(limit: int = 20) -> list[dict[str, object]]:
+    with database_session() as connection:
+        rows = connection.execute(
+            """
+            SELECT id, adapter, external_id, state, created_at, updated_at, last_error
+            FROM agent_runners
+            ORDER BY updated_at DESC, id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    return [
+        {
+            "id": row[0],
+            "adapter": row[1],
+            "external_id": row[2],
+            "state": row[3],
+            "created_at": row[4],
+            "updated_at": row[5],
+            "last_error": row[6],
+        }
+        for row in rows
+    ]
+
+
+def list_resume_requests(limit: int = 50) -> list[dict[str, object]]:
+    with database_session() as connection:
+        rows = connection.execute(
+            """
+            SELECT
+                id, answer_event_id, question_id, runner_id, status, reason,
+                created_at, claimed_at, completed_at
+            FROM resume_requests
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    return [
+        {
+            "id": row[0],
+            "answer_event_id": row[1],
+            "question_id": row[2],
+            "runner_id": row[3],
+            "status": row[4],
+            "reason": row[5],
+            "created_at": row[6],
+            "claimed_at": row[7],
+            "completed_at": row[8],
+        }
+        for row in rows
+    ]
+
+
+def list_resume_attempts(limit: int = 50) -> list[dict[str, object]]:
+    with database_session() as connection:
+        rows = connection.execute(
+            """
+            SELECT
+                id, request_id, status, pid, started_at, finished_at,
+                exit_code, last_error
+            FROM resume_attempts
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    return [
+        {
+            "id": row[0],
+            "request_id": row[1],
+            "status": row[2],
+            "pid": row[3],
+            "started_at": row[4],
+            "finished_at": row[5],
+            "exit_code": row[6],
+            "last_error": row[7],
+        }
+        for row in rows
+    ]
+
+
+def runner_snapshot() -> dict[str, object]:
+    return {
+        "runners": list_runners(),
+        "resume_requests": list_resume_requests(),
+        "resume_attempts": list_resume_attempts(),
+    }
+
+
 def ask_question(question: str) -> dict[str, object]:
     question = question.strip()
     if not question:
