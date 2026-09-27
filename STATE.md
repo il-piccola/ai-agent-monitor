@@ -6,7 +6,7 @@
 - Visibility: public
 - Default branch: `main`
 - Formal release: `v1.0.0` published
-- Development package version: `1.6.0`
+- Development package version: `1.6.1`
 - Completed phases: 1 through 18
 - Current work: Phase 20 two-way Telegram answers; Phase 19 remains deferred at the human's request
 
@@ -120,3 +120,5 @@ Version 1.6.0 adds an opt-in Telegram reply receiver. Outgoing question notifica
 In the disposable `phase15-notification-test` project, Japanese test question #6 was delivered once to Telegram. The human replied `確認` to that notification. A one-shot poll processed one update and stored one answer against question #6; `monitor status` then showed the answer and removed #6 from open questions. Reply receiving was turned off in this disposable project afterward. The real `nashiri-core` project's Telegram notifications and replies are now enabled, with email still off. Its existing backend 8766/HTTPS 9444 and production 8765/HTTPS 9443 all returned HTTP 200, and Tailscale Serve mappings were unchanged. The real project's background reply loop will be verified when its next genuine human question occurs; no synthetic question was inserted into its active task. Phase 19 remains deferred.
 
 On 2026-09-28, `monitor startup install` registered a per-user Windows Startup-folder launcher for `nashiri-core` only. `monitor startup status` reports installed, and doctor reports startup, remote, and notification checks as OK. The installed launcher points to this project's directory and the installed tool's Python. Running its script while the remote was already healthy exited 0 without changing the backend PID. All established Serve mappings (443, 8443, 8444, 9443, 9444) matched their prior targets, and both local and tailnet URLs for the two Monitor servers returned HTTP 200. The Telegram bot token is present in the Windows user environment. Actual recovery after a Windows sign-out or reboot has not yet been observed; that is the remaining startup verification.
+
+Version 1.6.1 renders each dashboard's browser title from the project directory name, which is the repository name for the deployed projects. The bundled dashboard also uses that name as its visible heading. A project-specific dashboard keeps its own heading and body while receiving the project title. No new backend or Serve port is needed; the N100 standard-library suite passes 162 tests.

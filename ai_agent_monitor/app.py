@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import html
 import os
 import json
 import mimetypes
@@ -74,6 +75,40 @@ def dashboard_path() -> Path:
     if project_dashboard.is_file():
         return project_dashboard
     return DEFAULT_DASHBOARD_PATH
+
+
+def rendered_dashboard_html() -> bytes:
+    content = dashboard_path().read_text(encoding="utf-8")
+    escaped_name = html.escape(PROJECT_ROOT.name)
+    title = f"<title>{escaped_name}</title>"
+    title_pattern = r"<title\b[^>]*>.*?</title\s*>"
+    if re.search(title_pattern, content, flags=re.IGNORECASE | re.DOTALL):
+        content = re.sub(
+            title_pattern,
+            lambda _: title,
+            content,
+            count=1,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+    elif re.search(r"<head\b[^>]*>", content, flags=re.IGNORECASE):
+        content = re.sub(
+            r"<head\b[^>]*>",
+            lambda match: f"{match.group(0)}\n  {title}",
+            content,
+            count=1,
+            flags=re.IGNORECASE,
+        )
+    else:
+        content = f"{title}\n{content}"
+
+    content = re.sub(
+        r'(<h1\b[^>]*\bid=["\']monitor-project-heading["\'][^>]*>).*?(</h1\s*>)',
+        lambda match: f"{match.group(1)}{escaped_name}{match.group(2)}",
+        content,
+        count=1,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    return content.encode("utf-8")
 
 
 def registry_path() -> Path:
@@ -4539,7 +4574,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def _serve_dashboard(self) -> None:
         try:
-            content = dashboard_path().read_bytes()
+            content = rendered_dashboard_html()
         except FileNotFoundError:
             self.send_error(500, "dashboard.html is missing")
             return

@@ -32,6 +32,8 @@ Version 1.5.4 extends separate Japanese display translations to the current task
 
 Version 1.5.5 keeps the newest progress event visible and places older events in an expandable section on the same dashboard. The section stays open across the three-second refresh when the data has not changed. This changes only the presentation; progress records and the `/api/progress` response are unchanged.
 
+Version 1.6.1 sets each project's browser page title to its project directory name (normally the repository name). The bundled dashboard also shows that name as its main heading. Project-specific dashboards keep their custom heading and content.
+
 The dashboard supports progress updates, a current task, unanswered questions, browser-submitted answers, registered artifact snapshots, and project-specific metrics. The installed CLI keeps each project's data and optional dashboard separate. The data is stored locally and the dashboard refreshes automatically.
 
 ## Run the dashboard

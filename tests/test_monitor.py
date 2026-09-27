@@ -411,6 +411,31 @@ class ProjectBoundaryTests(MonitorStorageTestCase):
             source_dashboard.read_bytes(),
         )
 
+    def test_bundled_dashboard_uses_escaped_project_name(self) -> None:
+        project = self.root / "repo & sample"
+        project.mkdir()
+        with patch.object(monitor, "PROJECT_ROOT", project):
+            content = monitor.rendered_dashboard_html().decode("utf-8")
+
+        self.assertIn("<title>repo &amp; sample</title>", content)
+        self.assertIn(
+            '<h1 id="monitor-project-heading">repo &amp; sample</h1>',
+            content,
+        )
+
+    def test_custom_dashboard_keeps_its_heading_but_uses_project_title(self) -> None:
+        custom = self.root / ".agent-monitor" / "dashboard.html"
+        custom.parent.mkdir(parents=True, exist_ok=True)
+        original = "<html><head><title>Custom title</title></head><body><h1>Custom heading</h1></body></html>"
+        custom.write_text(original, encoding="utf-8")
+
+        with patch.object(monitor, "PROJECT_ROOT", self.root):
+            content = monitor.rendered_dashboard_html().decode("utf-8")
+
+        self.assertIn(f"<title>{self.root.name}</title>", content)
+        self.assertIn("<h1>Custom heading</h1>", content)
+        self.assertEqual(custom.read_text(encoding="utf-8"), original)
+
 
 class InstalledStyleCliIsolationTests(unittest.TestCase):
     def test_module_cli_keeps_two_projects_separate(self) -> None:
