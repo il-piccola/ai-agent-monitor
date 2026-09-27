@@ -1902,6 +1902,45 @@ def retry_resume_request(request_id: int) -> dict[str, object]:
     return {"id": request_id, "status": "pending"}
 
 
+
+def _codex_exec_base_argv(command: str) -> list[str]:
+    return [
+        command,
+        "-c",
+        'sandbox_mode="workspace-write"',
+        "-c",
+        'approval_policy="never"',
+        "exec",
+    ]
+
+
+def run_codex_preflight() -> dict[str, object]:
+    config = read_runner_config()
+    command = str(config.get("codex_command") or DEFAULT_CODEX_COMMAND)
+    argv = [
+        *_codex_exec_base_argv(command),
+        "-C",
+        str(PROJECT_ROOT),
+        "Reply with only: AI_AGENT_MONITOR_CODEX_OK",
+    ]
+    result = subprocess.run(
+        argv,
+        cwd=str(PROJECT_ROOT),
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    output = (result.stdout or "").strip()
+    error_output = (result.stderr or "").strip()
+    ok = result.returncode == 0 and "AI_AGENT_MONITOR_CODEX_OK" in output
+    return {
+        "ok": ok,
+        "exit_code": int(result.returncode),
+        "output": output,
+        "error": error_output,
+    }
+
 def run_resume_worker(attempt_id: int) -> int:
     with database_session() as connection:
         row = connection.execute(
@@ -1938,12 +1977,7 @@ def run_resume_worker(attempt_id: int) -> int:
     config = read_runner_config()
     command = str(config.get("codex_command") or DEFAULT_CODEX_COMMAND)
     argv = [
-        command,
-        "-c",
-        'sandbox_mode="workspace-write"',
-        "-c",
-        'approval_policy="never"',
-        "exec",
+        *_codex_exec_base_argv(command),
         "-C",
         str(PROJECT_ROOT),
         "resume",
@@ -4275,6 +4309,11 @@ def parse_runner_args(argv: list[str]) -> argparse.Namespace:
     codex_set = codex_actions.add_parser("set", help="Set Codex executable path or command")
     codex_set.add_argument("--command", required=True)
 
+    subparsers.add_parser(
+        "preflight",
+        help="Run a harmless Codex command using the exact automatic-resume policy",
+    )
+
     subparsers.add_parser("dispatch", help="Force one pending resume dispatch")
 
     retry = subparsers.add_parser(
@@ -4485,6 +4524,12 @@ def main() -> None:
         if args.action == "codex":
             command = configure_codex_command(args.command)
             print(f"Codex command configured: {command}")
+            return
+        if args.action == "preflight":
+            result = run_codex_preflight()
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            if not result["ok"]:
+                raise SystemExit(1)
             return
         if args.action == "dispatch":
             print(
