@@ -1570,6 +1570,427 @@ def _notification_dispatch_loop(stop_event: threading.Event) -> None:
             continue
 
 
+RUNNER_POLL_SECONDS = 5.0
+RUNNER_CONFIG_FILENAME = "runner.json"
+DEFAULT_CODEX_COMMAND = "codex"
+
+
+def runner_config_path() -> Path:
+    return DATA_DIR / RUNNER_CONFIG_FILENAME
+
+
+def default_runner_config() -> dict[str, object]:
+    return {
+        "auto_resume": False,
+        "codex_command": DEFAULT_CODEX_COMMAND,
+    }
+
+
+def read_runner_config() -> dict[str, object]:
+    config = default_runner_config()
+    path = runner_config_path()
+    if not path.is_file():
+        return config
+    try:
+        stored = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"Runner config is invalid: {path}") from exc
+    if not isinstance(stored, dict):
+        raise RuntimeError(f"Runner config is invalid: {path}")
+    config.update(stored)
+    return config
+
+
+def write_runner_config(config: dict[str, object]) -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    _ensure_project_gitignore(DATA_DIR / ".gitignore")
+    path = runner_config_path()
+    temporary = path.with_suffix(".json.tmp")
+    temporary.write_text(
+        json.dumps(config, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    temporary.replace(path)
+
+
+def configure_codex_command(command: str) -> str:
+    command = command.strip()
+    if not command:
+        raise ValueError("Codex command must not be empty.")
+    config = read_runner_config()
+    config["codex_command"] = command
+    write_runner_config(config)
+    return command
+
+
+def set_auto_resume_enabled(enabled: bool) -> dict[str, object]:
+    config = read_runner_config()
+    if enabled:
+        command = str(config.get("codex_command") or DEFAULT_CODEX_COMMAND)
+        if Path(command).is_absolute():
+            if not Path(command).is_file():
+                raise RuntimeError(f"Configured Codex executable does not exist: {command}")
+        elif shutil.which(command) is None:
+            raise RuntimeError(
+                "Codex executable was not found. Configure it before enabling auto-resume."
+            )
+    config["auto_resume"] = enabled
+    write_runner_config(config)
+    return config
+
+
+def runner_config_public() -> dict[str, object]:
+    config = read_runner_config()
+    command = str(config.get("codex_command") or DEFAULT_CODEX_COMMAND)
+    resolved = str(Path(command)) if Path(command).is_absolute() else shutil.which(command)
+    return {
+        "auto_resume": config.get("auto_resume") is True,
+        "codex_command": command,
+        "codex_available": bool(resolved),
+        "codex_resolved": resolved,
+    }
+
+
+def _resume_prompt(question_id: int) -> str:
+    return (
+        "Continue the current monitored project work after the human answer to "
+        f"question #{question_id}. First run monitor runner register codex and "
+        "monitor status, read the stored answer, then continue the existing task. "
+        "Use the repository instructions and AI Agent Monitor contract. If the task "
+        "is complete, run the required validation, record meaningful progress, run "
+        "monitor task done, and then monitor runner complete. If another genuine "
+        "human decision is required, use monitor ask and stop at that decision."
+    )
+
+
+def _claim_resume_request() -> tuple[int, int] | None:
+    now = utc_now()
+    with database_session() as connection:
+        row = connection.execute(
+            """
+            SELECT id
+            FROM resume_requests
+            WHERE status = 'pending'
+            ORDER BY id ASC
+            LIMIT 1
+            """
+        ).fetchone()
+        if row is None:
+            return None
+        request_id = int(row[0])
+        cursor = connection.execute(
+            """
+            UPDATE resume_requests
+            SET status = 'claimed', claimed_at = ?
+            WHERE id = ? AND status = 'pending'
+            """,
+            (now, request_id),
+        )
+        if cursor.rowcount != 1:
+            return None
+        attempt_cursor = connection.execute(
+            """
+            INSERT INTO resume_attempts (request_id, status, started_at)
+            VALUES (?, 'launching', ?)
+            """,
+            (request_id, now),
+        )
+        return request_id, int(attempt_cursor.lastrowid)
+
+
+def _runner_worker_command(attempt_id: int) -> list[str]:
+    return [
+        sys.executable,
+        "-m",
+        "ai_agent_monitor.app",
+        "runner",
+        "worker",
+        str(attempt_id),
+    ]
+
+
+def _spawn_resume_worker(request_id: int, attempt_id: int) -> int:
+    runtime = remote_runtime_dir()
+    runtime.mkdir(parents=True, exist_ok=True)
+    stdout_path = runtime / f"resume-{attempt_id}.stdout.log"
+    stderr_path = runtime / f"resume-{attempt_id}.stderr.log"
+
+    kwargs: dict[str, object] = {
+        "cwd": str(PROJECT_ROOT),
+        "stdin": subprocess.DEVNULL,
+    }
+    if sys.platform == "win32":
+        kwargs["creationflags"] = (
+            subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
+        )
+    else:
+        kwargs["start_new_session"] = True
+
+    with (
+        stdout_path.open("ab") as stdout_handle,
+        stderr_path.open("ab") as stderr_handle,
+    ):
+        process = subprocess.Popen(
+            _runner_worker_command(attempt_id),
+            stdout=stdout_handle,
+            stderr=stderr_handle,
+            **kwargs,
+        )
+
+    now = utc_now()
+    with database_session() as connection:
+        connection.execute(
+            """
+            UPDATE resume_attempts
+            SET status = 'running', pid = ?
+            WHERE id = ? AND status = 'launching'
+            """,
+            (process.pid, attempt_id),
+        )
+        connection.execute(
+            """
+            UPDATE resume_requests
+            SET status = 'running'
+            WHERE id = ? AND status = 'claimed'
+            """,
+            (request_id,),
+        )
+    return int(process.pid)
+
+
+def recover_resume_requests() -> dict[str, int]:
+    uncertain = 0
+    active = 0
+    now = utc_now()
+    with database_session() as connection:
+        rows = connection.execute(
+            """
+            SELECT r.id, a.id, a.pid, a.status
+            FROM resume_requests AS r
+            JOIN resume_attempts AS a ON a.request_id = r.id
+            WHERE r.status IN ('claimed', 'running')
+            AND a.id = (
+                SELECT MAX(a2.id)
+                FROM resume_attempts AS a2
+                WHERE a2.request_id = r.id
+            )
+            """
+        ).fetchall()
+        for request_id, attempt_id, pid, attempt_status in rows:
+            if isinstance(pid, int) and _process_is_alive(pid):
+                active += 1
+                continue
+            connection.execute(
+                """
+                UPDATE resume_requests
+                SET status = 'uncertain', reason = ?
+                WHERE id = ?
+                """,
+                ("worker_missing_after_restart", request_id),
+            )
+            connection.execute(
+                """
+                UPDATE resume_attempts
+                SET status = 'uncertain', finished_at = ?,
+                    last_error = COALESCE(last_error, ?)
+                WHERE id = ?
+                """,
+                (now, "Worker state could not be proven after restart.", attempt_id),
+            )
+            uncertain += 1
+    return {"active": active, "uncertain": uncertain}
+
+
+def dispatch_resume_requests(*, force: bool = False) -> dict[str, int]:
+    config = read_runner_config()
+    if not force and config.get("auto_resume") is not True:
+        return {"claimed": 0, "launched": 0}
+
+    recover_resume_requests()
+    claimed = _claim_resume_request()
+    if claimed is None:
+        return {"claimed": 0, "launched": 0}
+
+    request_id, attempt_id = claimed
+    try:
+        _spawn_resume_worker(request_id, attempt_id)
+    except Exception as exc:
+        now = utc_now()
+        with database_session() as connection:
+            connection.execute(
+                """
+                UPDATE resume_requests
+                SET status = 'pending', reason = ?
+                WHERE id = ? AND status = 'claimed'
+                """,
+                (f"launch_failed: {exc}", request_id),
+            )
+            connection.execute(
+                """
+                UPDATE resume_attempts
+                SET status = 'failed', finished_at = ?, last_error = ?
+                WHERE id = ?
+                """,
+                (now, str(exc), attempt_id),
+            )
+        return {"claimed": 1, "launched": 0}
+
+    return {"claimed": 1, "launched": 1}
+
+
+def retry_resume_request(request_id: int) -> dict[str, object]:
+    with database_session() as connection:
+        row = connection.execute(
+            "SELECT status FROM resume_requests WHERE id = ?",
+            (request_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"Resume request {request_id} does not exist.")
+        if row[0] != "uncertain":
+            raise RuntimeError("Only an uncertain resume request can be retried manually.")
+        connection.execute(
+            """
+            UPDATE resume_requests
+            SET status = 'pending', reason = 'manual_retry', claimed_at = NULL
+            WHERE id = ?
+            """,
+            (request_id,),
+        )
+    return {"id": request_id, "status": "pending"}
+
+
+def run_resume_worker(attempt_id: int) -> int:
+    with database_session() as connection:
+        row = connection.execute(
+            """
+            SELECT
+                a.request_id,
+                r.question_id,
+                r.runner_id,
+                runner.adapter,
+                runner.external_id,
+                r.status
+            FROM resume_attempts AS a
+            JOIN resume_requests AS r ON r.id = a.request_id
+            JOIN agent_runners AS runner ON runner.id = r.runner_id
+            WHERE a.id = ?
+            """,
+            (attempt_id,),
+        ).fetchone()
+
+    if row is None:
+        raise RuntimeError(f"Resume attempt {attempt_id} does not exist.")
+
+    request_id = int(row[0])
+    question_id = int(row[1])
+    runner_id = int(row[2])
+    adapter = str(row[3])
+    external_id = str(row[4])
+    request_status = str(row[5])
+    if adapter != "codex":
+        raise RuntimeError(f"Unsupported runner adapter: {adapter}")
+    if request_status not in {"claimed", "running"}:
+        return 0
+
+    config = read_runner_config()
+    command = str(config.get("codex_command") or DEFAULT_CODEX_COMMAND)
+    argv = [
+        command,
+        "exec",
+        "-C",
+        str(PROJECT_ROOT),
+        "resume",
+        external_id,
+        _resume_prompt(question_id),
+    ]
+
+    now = utc_now()
+    with database_session() as connection:
+        connection.execute(
+            """
+            UPDATE agent_runners
+            SET state = 'running', updated_at = ?, last_error = NULL
+            WHERE id = ?
+            """,
+            (now, runner_id),
+        )
+
+    try:
+        result = subprocess.run(
+            argv,
+            cwd=str(PROJECT_ROOT),
+            stdin=subprocess.DEVNULL,
+            timeout=None,
+            check=False,
+        )
+        exit_code = int(result.returncode)
+        error = None if exit_code == 0 else f"Codex exited with code {exit_code}."
+    except Exception as exc:
+        exit_code = -1
+        error = str(exc)
+
+    finished_at = utc_now()
+    with database_session() as connection:
+        if exit_code == 0:
+            current_request = connection.execute(
+                "SELECT status FROM resume_requests WHERE id = ?",
+                (request_id,),
+            ).fetchone()
+            if current_request is not None and current_request[0] == "running":
+                connection.execute(
+                    """
+                    UPDATE resume_requests
+                    SET status = 'completed', completed_at = ?
+                    WHERE id = ?
+                    """,
+                    (finished_at, request_id),
+                )
+            connection.execute(
+                """
+                UPDATE resume_attempts
+                SET status = 'completed', finished_at = ?, exit_code = 0
+                WHERE id = ?
+                """,
+                (finished_at, attempt_id),
+            )
+        else:
+            connection.execute(
+                """
+                UPDATE resume_requests
+                SET status = 'cancelled', reason = ?, completed_at = ?
+                WHERE id = ?
+                """,
+                (error, finished_at, request_id),
+            )
+            connection.execute(
+                """
+                UPDATE resume_attempts
+                SET status = 'failed', finished_at = ?, exit_code = ?, last_error = ?
+                WHERE id = ?
+                """,
+                (finished_at, exit_code, error, attempt_id),
+            )
+            connection.execute(
+                """
+                UPDATE agent_runners
+                SET state = 'failed', updated_at = ?, last_error = ?
+                WHERE id = ?
+                """,
+                (finished_at, error, runner_id),
+            )
+
+    return exit_code
+
+
+def _runner_dispatch_loop(stop_event: threading.Event) -> None:
+    recover_resume_requests()
+    while not stop_event.wait(RUNNER_POLL_SECONDS):
+        try:
+            dispatch_resume_requests(force=False)
+        except Exception:
+            continue
+
+
 RUNNER_STATES = {"running", "waiting_for_human", "stopped", "completed", "failed"}
 RESUME_REQUEST_STATES = {"pending", "claimed", "running", "completed", "cancelled", "uncertain"}
 CODEX_THREAD_ID_ENV = "CODEX_THREAD_ID"
