@@ -3328,7 +3328,21 @@ DOCTOR_LOG_WARNING_BYTES = 10 * 1024 * 1024
 DOCTOR_REQUIRED_SCHEMA = {
     "progress": {"id", "message", "created_at"},
     "current_task": {"id", "title", "started_at"},
-    "questions": {"id", "question", "status", "created_at", "answer", "answered_at"},
+    "questions": {
+        "id", "question", "status", "created_at", "answer", "answered_at", "runner_id"
+    },
+    "agent_runners": {
+        "id", "adapter", "external_id", "state", "created_at", "updated_at", "last_error"
+    },
+    "answer_events": {"id", "question_id", "answer", "answered_at"},
+    "resume_requests": {
+        "id", "answer_event_id", "question_id", "runner_id", "status", "reason",
+        "created_at", "claimed_at", "completed_at"
+    },
+    "resume_attempts": {
+        "id", "request_id", "status", "pid", "started_at", "finished_at",
+        "exit_code", "last_error"
+    },
     "artifacts": {
         "id",
         "display_name",
@@ -3773,6 +3787,53 @@ def _doctor_notifications() -> dict[str, object]:
     )
 
 
+def _doctor_runner() -> dict[str, object]:
+    try:
+        config = read_runner_config()
+    except RuntimeError as exc:
+        return _doctor_result(
+            "runner",
+            "error",
+            "Runner configuration could not be read.",
+            details={"error": str(exc)},
+        )
+
+    auto_resume = config.get("auto_resume") is True
+    command = str(config.get("codex_command") or DEFAULT_CODEX_COMMAND)
+    if Path(command).is_absolute():
+        available = Path(command).is_file()
+    else:
+        available = shutil.which(command) is not None
+
+    if auto_resume and not available:
+        return _doctor_result(
+            "runner",
+            "error",
+            "Automatic resume is enabled but the Codex executable is unavailable.",
+            details={"auto_resume": True, "codex_command": command},
+        )
+
+    with database_session() as connection:
+        uncertain = connection.execute(
+            "SELECT COUNT(*) FROM resume_requests WHERE status = 'uncertain'"
+        ).fetchone()[0]
+
+    if uncertain:
+        return _doctor_result(
+            "runner",
+            "warning",
+            "One or more resume requests require manual review.",
+            details={"auto_resume": auto_resume, "uncertain_requests": uncertain},
+        )
+
+    return _doctor_result(
+        "runner",
+        "ok",
+        "Runner configuration is usable.",
+        details={"auto_resume": auto_resume, "codex_available": available},
+    )
+
+
 def _doctor_runtime() -> dict[str, object]:
     runtime = remote_runtime_dir()
     if not runtime.is_dir():
@@ -3840,6 +3901,7 @@ def doctor_snapshot() -> dict[str, object]:
         _doctor_remote(),
         _doctor_startup(),
         _doctor_notifications(),
+        _doctor_runner(),
         _doctor_runtime(),
     ]
 
