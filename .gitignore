@@ -12,6 +12,8 @@ build/
 .agent-monitor/*.db
 .agent-monitor/*.db-shm
 .agent-monitor/*.db-wal
+.agent-monitor/.gitignore
+.agent-monitor/registry.json
 
 # OS files
 .DS_Store

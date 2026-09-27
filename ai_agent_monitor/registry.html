@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>案件一覧 | AI Agent Monitor</title>
+  <style>
+    :root { color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #101827; color: #eff5ff; line-height: 1.5; }
+    main { width: min(1040px, 100%); margin: 0 auto; padding: 28px 18px 56px; }
+    header { margin-bottom: 26px; }
+    h1 { font-size: clamp(1.65rem, 5vw, 2.45rem); margin: 0 0 5px; letter-spacing: .01em; }
+    .subtle { color: #a8bbd2; margin: 0; }
+    .summary { display: flex; flex-wrap: wrap; gap: 10px; margin: 24px 0 20px; }
+    .summary span { padding: 9px 14px; border: 1px solid #344761; border-radius: 999px; background: #1a2a40; font-weight: 600; }
+    .summary .attention { color: #ffd687; border-color: #8b6234; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 14px; }
+    article { border: 1px solid #344761; border-radius: 16px; background: #19283d; padding: 19px; min-width: 0; }
+    article.needs-attention { border-color: #b9853d; }
+    article.offline { opacity: .78; }
+    .card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+    h2 { margin: 0; font-size: 1.2rem; overflow-wrap: anywhere; }
+    .badge { flex: none; padding: 2px 9px; border-radius: 999px; font-size: .78rem; font-weight: 700; background: #234536; color: #a8ecc9; }
+    .needs-attention .badge { background: #584021; color: #ffe0a7; }
+    .offline .badge { background: #48323b; color: #f3bcc9; }
+    dl { margin: 18px 0; display: grid; grid-template-columns: 7.5em 1fr; row-gap: 8px; }
+    dt { color: #a8bbd2; }
+    dd { margin: 0; overflow-wrap: anywhere; }
+    .task { font-weight: 600; }
+    a { color: #b8d9ff; font-weight: 700; text-decoration: none; }
+    a:hover, a:focus-visible { text-decoration: underline; }
+    .open { display: inline-block; padding: 8px 0; }
+    #message { min-height: 1.5em; color: #a8bbd2; }
+    .empty { border: 1px dashed #52627a; border-radius: 14px; padding: 24px; color: #c1d0e1; }
+    footer { margin-top: 26px; color: #8da3bb; font-size: .9rem; }
+    @media (max-width: 420px) { main { padding: 22px 14px 44px; } article { padding: 16px; } dl { grid-template-columns: 6.7em 1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>案件一覧</h1>
+      <p class="subtle">確認が必要な案件と作業中の案件をまとめて表示します。</p>
+    </header>
+    <div id="summary" class="summary" aria-label="案件の概要"></div>
+    <p id="message" role="status" aria-live="polite">読み込み中…</p>
+    <div id="projects" class="grid"></div>
+    <footer>10秒ごとに更新します。各案件のデータはそれぞれのMonitorに保存されています。</footer>
+  </main>
+  <script>
+    const summary = document.getElementById('summary');
+    const projects = document.getElementById('projects');
+    const message = document.getElementById('message');
+
+    function summaryItem(label, value, attention = false) {
+      const item = document.createElement('span');
+      if (attention) item.className = 'attention';
+      item.textContent = `${label} ${value}`;
+      return item;
+    }
+
+    function row(list, label, value, extraClass = '') {
+      const term = document.createElement('dt');
+      term.textContent = label;
+      const detail = document.createElement('dd');
+      detail.textContent = value;
+      if (extraClass) detail.className = extraClass;
+      list.append(term, detail);
+    }
+
+    function timeText(value) {
+      if (!value) return '記録なし';
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? '記録なし' :
+        new Intl.DateTimeFormat('ja-JP', { dateStyle: 'short', timeStyle: 'short' }).format(date);
+    }
+
+    function safeDashboardUrl(value) {
+      try {
+        const url = new URL(value);
+        if (url.protocol === 'https:' || (url.protocol === 'http:' &&
+            ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))) return url.href;
+      } catch (_) { /* Invalid link remains unavailable. */ }
+      return null;
+    }
+
+    function card(project) {
+      const item = document.createElement('article');
+      const attention = project.available && project.unanswered_count > 0;
+      if (attention) item.classList.add('needs-attention');
+      if (!project.available) item.classList.add('offline');
+
+      const head = document.createElement('div');
+      head.className = 'card-head';
+      const name = document.createElement('h2');
+      name.textContent = project.name;
+      const badge = document.createElement('span');
+      badge.className = 'badge';
+      badge.textContent = !project.available ? '接続できません' : attention ? '要対応' : '接続中';
+      head.append(name, badge);
+
+      const details = document.createElement('dl');
+      row(details, '現在のタスク', project.available ? (project.current_task || 'なし') : '確認できません', 'task');
+      row(details, '未回答の質問', project.available ? `${project.unanswered_count}件` : '確認できません');
+      row(details, '最終活動', project.available ? timeText(project.last_activity) : '確認できません');
+      item.append(head, details);
+
+      const href = safeDashboardUrl(project.dashboard_url);
+      if (href) {
+        const link = document.createElement('a');
+        link.className = 'open';
+        link.href = href;
+        link.textContent = 'ダッシュボードを開く →';
+        item.append(link);
+      }
+      return item;
+    }
+
+    async function refresh() {
+      try {
+        const response = await fetch('/api/registry', { cache: 'no-store' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        const items = Array.isArray(data.projects) ? data.projects : [];
+        const attention = items.filter(item => item.available && item.unanswered_count > 0).length;
+        const unavailable = items.filter(item => !item.available).length;
+        summary.replaceChildren(
+          summaryItem('要対応', attention, attention > 0),
+          summaryItem('登録済み', items.length),
+          summaryItem('接続不可', unavailable)
+        );
+        items.sort((a, b) => {
+          const priority = item => !item.available ? 2 : item.unanswered_count > 0 ? 0 : 1;
+          return priority(a) - priority(b) || a.name.localeCompare(b.name, 'ja');
+        });
+        projects.replaceChildren(...items.map(card));
+        if (!items.length) {
+          const empty = document.createElement('p');
+          empty.className = 'empty';
+          empty.textContent = '案件はまだ登録されていません。N100で monitor registry add を実行してください。';
+          projects.append(empty);
+        }
+        message.textContent = `最終確認: ${timeText(data.checked_at)}`;
+      } catch (_) {
+        message.textContent = '案件一覧を取得できません。少し待ってから再読み込みしてください。';
+      }
+    }
+
+    refresh();
+    setInterval(refresh, 10000);
+  </script>
+</body>
+</html>

@@ -342,3 +342,11 @@ This trades a possible manual recovery step for protection against launching two
 
 
 The Codex compatibility preflight uses the same shared argv constructor as the resume worker. Verification therefore tests the actual non-interactive permission configuration instead of duplicating CLI flags in an operator runbook.
+
+## Project registry
+
+Phase 17 hosts a registry within an ordinary project Monitor server. Its project-local `.agent-monitor/registry.json` stores only registered dashboard URLs and the project identities verified at registration. It is ignored by Git and contains no credentials.
+
+The read-only `/api/status` endpoint exposes the existing `monitor status` snapshot. The registry requests that endpoint over HTTP from each registered server; older servers fall back to their existing project, task, question, progress, and answer APIs. It does not open another project's SQLite database or runtime files. HTTP probes have bounded response size and timeout, and are parallelized so an offline project does not block every card.
+
+Each poll verifies that a URL still reports the registered project ID. A mismatched or unreachable server is shown as unavailable while the saved entry and dashboard URL remain visible. The browser reads only the hosting server's `/api/registry` endpoint and does not require direct browser access to every project's API. The `/registry` page can be served through an existing Tailscale Serve mapping without allocating another port.

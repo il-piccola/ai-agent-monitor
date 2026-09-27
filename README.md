@@ -18,6 +18,8 @@ Phases 11 through 13 are verified on the N100. Version 1.0.0 passed the real Cod
 
 Phases 14 through 16 are verified on the N100. Phase 16 passed a real iPhone answer and automatic resume of the registered Codex thread, plus isolated missing-worker recovery.
 
+Phase 17 adds a project registry. N100 and iPhone verification is pending.
+
 The dashboard supports progress updates, a current task, unanswered questions, browser-submitted answers, registered artifact snapshots, and project-specific metrics. The installed CLI keeps each project's data and optional dashboard separate. The data is stored locally and the dashboard refreshes automatically.
 
 ## Run the dashboard
@@ -716,3 +718,20 @@ Safety behavior:
 - automatic resume can be turned off without affecting stored human answers
 
 The Codex skill tells a completed resumed run to execute `monitor task done` followed by `monitor runner complete`.
+
+## Multi-project registry
+
+Version 1.4 adds a project-local registry page at `/registry`. Run the following commands from the project whose Monitor server will host the registry:
+
+```bash
+monitor registry add https://monitor-host.example:9443/
+monitor registry add https://monitor-host.example:9444/
+monitor registry list
+monitor registry remove <project-id>
+```
+
+Registration verifies each project's `/api/project` identity. The host server reads the registered projects through their HTTP APIs, never their SQLite databases. The registry shows each project's name, current task, unanswered-question count, last activity, availability, and dashboard link. Unavailable projects remain listed. It polls every 10 seconds.
+
+New servers expose the read-only `/api/status` snapshot. For an older Monitor server without that endpoint, the registry reads its existing project, task, question, progress, and answer APIs. The registry config is `.agent-monitor/registry.json` in the hosting project and is ignored by Git. Only HTTPS dashboard URLs and loopback HTTP URLs are accepted.
+
+The registry can share an existing Monitor HTTPS address, such as `https://monitor-host.example:9443/registry`; no additional Tailscale Serve entry is needed.

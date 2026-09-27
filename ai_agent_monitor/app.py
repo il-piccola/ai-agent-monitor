@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Iterator
 
 from . import __version__
+from . import registry as project_registry
 
 HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
@@ -41,6 +42,7 @@ STATUS_ANSWER_LIMIT = 10
 PACKAGE_PATH = Path(__file__).resolve().parent
 PROJECT_ROOT = Path.cwd().resolve()
 DEFAULT_DASHBOARD_PATH = PACKAGE_PATH / "dashboard.html"
+REGISTRY_PAGE_PATH = PACKAGE_PATH / "registry.html"
 AGENT_CONTRACT_PATH = PACKAGE_PATH / "agent_integration.md"
 CODEX_SKILL_PATH = PACKAGE_PATH / "codex_skill.md"
 AGENTS_BLOCK_START = "<!-- ai-agent-monitor:start -->"
@@ -60,6 +62,7 @@ monitor.db-wal
 monitor.db-journal
 notifications.json
 runner.json
+registry.json
 artifacts/
 runtime/
 """
@@ -70,6 +73,10 @@ def dashboard_path() -> Path:
     if project_dashboard.is_file():
         return project_dashboard
     return DEFAULT_DASHBOARD_PATH
+
+
+def registry_path() -> Path:
+    return DATA_DIR / "registry.json"
 
 
 def _ensure_project_gitignore(ignore_path: Path) -> None:
@@ -4033,6 +4040,21 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._serve_dashboard()
             return
 
+        if path in ("/registry", "/registry.html"):
+            self._serve_registry_page()
+            return
+
+        if path == "/api/registry":
+            try:
+                self._serve_json(project_registry.snapshot(registry_path()))
+            except (ValueError, json.JSONDecodeError):
+                self._serve_json({"error": "Registry configuration is invalid."}, status=500)
+            return
+
+        if path == "/api/status":
+            self._serve_json(status_snapshot())
+            return
+
         if path == "/api/project":
             self._serve_json(project_info())
             return
@@ -4147,6 +4169,20 @@ class DashboardHandler(BaseHTTPRequestHandler):
             content = dashboard_path().read_bytes()
         except FileNotFoundError:
             self.send_error(500, "dashboard.html is missing")
+            return
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(content)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(content)
+
+    def _serve_registry_page(self) -> None:
+        try:
+            content = REGISTRY_PAGE_PATH.read_bytes()
+        except FileNotFoundError:
+            self.send_error(500, "registry.html is missing")
             return
 
         self.send_response(200)
@@ -4430,6 +4466,20 @@ def parse_artifact_args(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def parse_registry_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="monitor registry",
+        description="Manage dashboard links in this project's registry.",
+    )
+    actions = parser.add_subparsers(dest="action", required=True)
+    add = actions.add_parser("add", help="Register a reachable Monitor dashboard URL")
+    add.add_argument("url")
+    remove = actions.add_parser("remove", help="Remove a registered project ID")
+    remove.add_argument("project_id")
+    actions.add_parser("list", help="List registered projects without probing them")
+    return parser.parse_args(argv)
+
+
 def serve(port: int) -> None:
     if not dashboard_path().is_file():
         raise SystemExit(f"dashboard.html was not found at {dashboard_path()}")
@@ -4471,6 +4521,22 @@ def serve(port: int) -> None:
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "registry":
+        args = parse_registry_args(sys.argv[2:])
+        path = registry_path()
+        if args.action == "add":
+            init_project()
+            entry = project_registry.add_project(path, args.url)
+            print(json.dumps(entry, ensure_ascii=False, indent=2))
+            return
+        if args.action == "remove":
+            removed = project_registry.remove_project(path, args.project_id)
+            print("Project removed." if removed else "Project not found.")
+            return
+        print(json.dumps({"projects": project_registry.load_entries(path)},
+                         ensure_ascii=False, indent=2))
+        return
+
     if len(sys.argv) > 1 and sys.argv[1] == "runner":
         args = parse_runner_args(sys.argv[2:])
         if args.action == "register":

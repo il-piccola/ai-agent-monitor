@@ -6,9 +6,9 @@
 - Visibility: public
 - Default branch: `main`
 - Formal release: `v1.0.0` published
-- Development package version: `1.3.1`
+- Development package version: `1.4.0`
 - Completed phases: 1 through 16
-- Current phase: Phase 16 verified on N100; Phase 17 not started
+- Current phase: Phase 17 implemented; N100/iPhone verification pending
 
 ## Verified baseline
 
@@ -85,6 +85,16 @@ The `1.3.1` shared argv builder places both config overrides before `exec`. Its 
 
 In a separate disposable project, a synthetic missing worker PID changed one running request and attempt to `uncertain`; dispatch claimed and launched zero requests, and no worker process was started. The test project's auto-resume setting was returned to OFF and its 8767/9445 remote was stopped. Production 8765/9443 and `nashiri-core` 8766/9444 returned HTTP 200; the original Serve mappings remained in place.
 
+## Phase 17 implementation
+
+Version `1.4.0` adds `monitor registry add|list|remove`, a read-only `/api/status` snapshot, a registry aggregation API, and a Japanese `/registry` page. Registration verifies identity through each dashboard's HTTP API. The registry reads no other project's SQLite database and keeps unavailable projects visible. Older Monitor servers are supported through existing APIs.
+
+The intended N100 deployment reuses the existing 8765/9443 server for the registry and registers both that dashboard and `nashiri-core` at 8766/9444. It must not create a new Serve port.
+
+The standard-library suite passes all 140 tests on N100 for the Phase 17 implementation.
+
+N100 runtime verification: the existing 8765/9443 deployment was restarted on the same ports. `/registry`, `/api/registry`, and `/api/status` returned HTTP 200. The registry reported `ai-agent-monitor` and `nashiri-core` as available; the latter reported its active task and one unanswered question. Backend 8766 and HTTPS 9444 remained HTTP 200. The Serve mappings for 443, 8443, 8444, 9443, and 9444 remained unchanged. iPhone visual confirmation is pending.
+
 ## Next task
 
-Phase 17 has not started.
+Confirm the two-project registry on iPhone. Phase 18 has not started.
