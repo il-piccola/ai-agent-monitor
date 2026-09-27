@@ -347,7 +347,7 @@
         return;
       }
 
-      taskTitle.textContent = task.title;
+      taskTitle.textContent = task.title_ja || task.title;
       taskStarted.dateTime = task.started_at;
       taskStarted.textContent = `開始: ${formatTimestamp(task.started_at)}`;
       taskEmpty.hidden = true;
@@ -478,7 +478,7 @@
       }
 
       artifactLink.href = artifact.url;
-      artifactLink.textContent = artifact.display_name;
+      artifactLink.textContent = artifact.display_name_ja || artifact.display_name;
 
       const parts = [
         formatTimestamp(artifact.created_at),
@@ -504,7 +504,7 @@
       const status = document.createElement("p");
 
       question.className = "question-text";
-      question.textContent = item.question;
+      question.textContent = item.question_ja || item.question;
 
       timestamp.className = "timestamp";
       timestamp.dateTime = item.created_at;

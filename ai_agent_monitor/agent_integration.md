@@ -4,6 +4,17 @@ This document defines how a CLI-capable AI agent should use AI Agent Monitor.
 
 The contract is agent-neutral. Codex may consume it first, but the monitor does not require Codex or any other specific runner.
 
+Write dashboard-facing task titles, progress, questions, and artifact labels in
+the reader's language. When an older English task, question, or artifact label
+must remain as the original record, add a Japanese display translation without
+changing that record:
+
+```text
+monitor translate task "現在のタスク名"
+monitor translate question 3 "質問の日本語訳"
+monitor translate artifact 20 "成果物名の日本語訳"
+```
+
 ## Start or resume work
 
 Use the installed `monitor` command for the operations below. If the shell says

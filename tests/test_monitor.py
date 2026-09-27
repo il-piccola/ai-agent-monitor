@@ -39,6 +39,14 @@ class ProgressStorageTests(MonitorStorageTestCase):
         self.assertEqual(args.ja, "日本語の進捗")
         self.assertEqual(args.message, ["Original progress"])
 
+    def test_translate_cli_targets_task_and_question(self) -> None:
+        task = monitor.parse_translate_args(["task", "現在のタスク"])
+        question = monitor.parse_translate_args(["question", "3", "日本語の質問"])
+        self.assertEqual(task.entity_type, "task")
+        self.assertEqual(task.translation, ["現在のタスク"])
+        self.assertEqual(question.entity_type, "question")
+        self.assertEqual(question.id, 3)
+
     def test_progress_is_persisted_and_newest_is_first(self) -> None:
         first = monitor.record_progress("first")
         second = monitor.record_progress("second")
@@ -89,6 +97,14 @@ class ProgressStorageTests(MonitorStorageTestCase):
 
 
 class CurrentTaskStorageTests(MonitorStorageTestCase):
+    def test_task_translation_preserves_title_and_does_not_follow_replacement(self) -> None:
+        monitor.start_task("Original task")
+        monitor.set_display_translation("task", 1, "元のタスク")
+        self.assertEqual(monitor.get_current_task()["title"], "Original task")
+        self.assertEqual(monitor.get_current_task()["title_ja"], "元のタスク")
+        monitor.start_task("Different task")
+        self.assertIsNone(monitor.get_current_task()["title_ja"])
+
     def test_task_can_be_started_and_read(self) -> None:
         started = monitor.start_task("Build login page")
         self.assertEqual(monitor.get_current_task(), started)
@@ -110,6 +126,12 @@ class CurrentTaskStorageTests(MonitorStorageTestCase):
 
 
 class QuestionStorageTests(MonitorStorageTestCase):
+    def test_question_translation_preserves_original(self) -> None:
+        item = monitor.ask_question("Original question?")
+        monitor.set_display_translation("question", item["id"], "元の質問ですか？")
+        self.assertEqual(monitor.list_open_questions()[0]["question"], "Original question?")
+        self.assertEqual(monitor.list_open_questions()[0]["question_ja"], "元の質問ですか？")
+
     def test_question_is_persisted(self) -> None:
         question = monitor.ask_question("Use option A or option B?")
         self.assertEqual(monitor.list_open_questions(), [question])
@@ -204,6 +226,19 @@ class AnswerStorageTests(MonitorStorageTestCase):
 
 
 class ArtifactStorageTests(MonitorStorageTestCase):
+    def test_artifact_translation_preserves_name_and_snapshot(self) -> None:
+        source = self.root / "report.txt"
+        source.write_text("original report", encoding="utf-8")
+        artifact = monitor.register_artifact(source, "Original report", allowed_root=self.root)
+        monitor.set_display_translation("artifact", artifact["id"], "元の報告書")
+        displayed = monitor.get_latest_artifact()
+        self.assertEqual(displayed["display_name"], "Original report")
+        self.assertEqual(displayed["display_name_ja"], "元の報告書")
+        self.assertEqual(
+            (monitor.artifact_dir() / monitor.get_artifact_record(artifact["id"])["storage_name"]).read_text(encoding="utf-8"),
+            "original report",
+        )
+
     def test_artifact_snapshot_is_immutable_and_hashed(self) -> None:
         source = self.root / "report.txt"
         source.write_text("original report", encoding="utf-8")

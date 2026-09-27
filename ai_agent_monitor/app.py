@@ -416,6 +416,17 @@ def connect_db() -> sqlite3.Connection:
     )
     connection.execute(
         """
+        CREATE TABLE IF NOT EXISTS display_translations (
+            entity_type TEXT NOT NULL,
+            entity_id INTEGER NOT NULL,
+            source_text TEXT NOT NULL,
+            ja_text TEXT NOT NULL,
+            PRIMARY KEY (entity_type, entity_id)
+        )
+        """
+    )
+    connection.execute(
+        """
         CREATE TABLE IF NOT EXISTS task_runs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL,
@@ -636,7 +647,37 @@ def list_progress(limit: int = 50) -> list[dict[str, object]]:
     ]
 
 
-def start_task(title: str) -> dict[str, str]:
+def set_display_translation(entity_type: str, entity_id: int, ja_text: str) -> None:
+    sources = {
+        "task": ("current_task", "title"),
+        "question": ("questions", "question"),
+        "artifact": ("artifacts", "display_name"),
+    }
+    if entity_type not in sources:
+        raise ValueError("Unsupported display translation type.")
+    ja_text = ja_text.strip()
+    if not ja_text:
+        raise ValueError("Japanese display text must not be empty.")
+    table, column = sources[entity_type]
+    with database_session() as connection:
+        row = connection.execute(
+            f"SELECT {column} FROM {table} WHERE id = ?", (entity_id,)
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"{entity_type} record {entity_id} does not exist.")
+        connection.execute(
+            """
+            INSERT INTO display_translations (entity_type, entity_id, source_text, ja_text)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(entity_type, entity_id) DO UPDATE SET
+                source_text = excluded.source_text,
+                ja_text = excluded.ja_text
+            """,
+            (entity_type, entity_id, row[0], ja_text),
+        )
+
+
+def start_task(title: str) -> dict[str, str | None]:
     title = title.strip()
     if not title:
         raise ValueError("Task title must not be empty.")
@@ -669,13 +710,22 @@ def start_task(title: str) -> dict[str, str]:
     return {
         "title": title,
         "started_at": started_at,
+        "title_ja": None,
     }
 
 
-def get_current_task() -> dict[str, str] | None:
+def get_current_task() -> dict[str, str | None] | None:
     with database_session() as connection:
         row = connection.execute(
-            "SELECT title, started_at FROM current_task WHERE id = 1"
+            """
+            SELECT task.title, task.started_at, translation.ja_text
+            FROM current_task AS task
+            LEFT JOIN display_translations AS translation
+              ON translation.entity_type = 'task'
+             AND translation.entity_id = task.id
+             AND translation.source_text = task.title
+            WHERE task.id = 1
+            """
         ).fetchone()
 
     if row is None:
@@ -684,6 +734,7 @@ def get_current_task() -> dict[str, str] | None:
     return {
         "title": row[0],
         "started_at": row[1],
+        "title_ja": row[2],
     }
 
 
@@ -2389,15 +2440,20 @@ def ask_question(question: str) -> dict[str, object]:
         "id": question_id,
         "question": question,
         "created_at": created_at,
+        "question_ja": None,
     }
 
 
 def list_open_questions(limit: int | None = 50) -> list[dict[str, object]]:
     query = """
-        SELECT id, question, created_at
-        FROM questions
-        WHERE status = 'open'
-        ORDER BY id DESC
+        SELECT question.id, question.question, question.created_at, translation.ja_text
+        FROM questions AS question
+        LEFT JOIN display_translations AS translation
+          ON translation.entity_type = 'question'
+         AND translation.entity_id = question.id
+         AND translation.source_text = question.question
+        WHERE question.status = 'open'
+        ORDER BY question.id DESC
     """
     parameters: tuple[object, ...] = ()
     if limit is not None:
@@ -2408,7 +2464,7 @@ def list_open_questions(limit: int | None = 50) -> list[dict[str, object]]:
         rows = connection.execute(query, parameters).fetchall()
 
     return [
-        {"id": row[0], "question": row[1], "created_at": row[2]}
+        {"id": row[0], "question": row[1], "created_at": row[2], "question_ja": row[3]}
         for row in rows
     ]
 
@@ -2573,6 +2629,7 @@ def _public_artifact(row: tuple[object, ...]) -> dict[str, object]:
     return {
         "id": row[0],
         "display_name": row[1],
+        "display_name_ja": row[9] if len(row) > 9 else None,
         "original_name": row[2],
         "size_bytes": row[4],
         "sha256": row[5],
@@ -2671,17 +2728,22 @@ def get_latest_artifact() -> dict[str, object] | None:
         row = connection.execute(
             """
             SELECT
-                id,
-                display_name,
-                original_name,
-                storage_name,
-                size_bytes,
-                sha256,
-                mime_type,
-                git_commit,
-                created_at
-            FROM artifacts
-            ORDER BY id DESC
+                artifact.id,
+                artifact.display_name,
+                artifact.original_name,
+                artifact.storage_name,
+                artifact.size_bytes,
+                artifact.sha256,
+                artifact.mime_type,
+                artifact.git_commit,
+                artifact.created_at,
+                translation.ja_text
+            FROM artifacts AS artifact
+            LEFT JOIN display_translations AS translation
+              ON translation.entity_type = 'artifact'
+             AND translation.entity_id = artifact.id
+             AND translation.source_text = artifact.display_name
+            ORDER BY artifact.id DESC
             LIMIT 1
             """
         ).fetchone()
@@ -2696,17 +2758,22 @@ def get_artifact_record(artifact_id: int) -> dict[str, object] | None:
         row = connection.execute(
             """
             SELECT
-                id,
-                display_name,
-                original_name,
-                storage_name,
-                size_bytes,
-                sha256,
-                mime_type,
-                git_commit,
-                created_at
-            FROM artifacts
-            WHERE id = ?
+                artifact.id,
+                artifact.display_name,
+                artifact.original_name,
+                artifact.storage_name,
+                artifact.size_bytes,
+                artifact.sha256,
+                artifact.mime_type,
+                artifact.git_commit,
+                artifact.created_at,
+                translation.ja_text
+            FROM artifacts AS artifact
+            LEFT JOIN display_translations AS translation
+              ON translation.entity_type = 'artifact'
+             AND translation.entity_id = artifact.id
+             AND translation.source_text = artifact.display_name
+            WHERE artifact.id = ?
             """,
             (artifact_id,),
         ).fetchone()
@@ -4374,6 +4441,21 @@ def parse_progress_args(argv: list[str]) -> argparse.Namespace:
     return args
 
 
+def parse_translate_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="monitor translate",
+        description="Add Japanese display text without changing the original record.",
+    )
+    actions = parser.add_subparsers(dest="entity_type", required=True)
+    task = actions.add_parser("task", help="Translate the current task title")
+    task.add_argument("translation", nargs="+")
+    for entity_type in ("question", "artifact", "progress"):
+        action = actions.add_parser(entity_type, help=f"Translate a {entity_type} record")
+        action.add_argument("id", type=int)
+        action.add_argument("translation", nargs="+")
+    return parser.parse_args(argv)
+
+
 def parse_task_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="monitor task",
@@ -4844,6 +4926,18 @@ def main() -> None:
         else:
             event = record_progress(" ".join(args.message), args.ja)
             print(f"Progress recorded: {event['message']}")
+        return
+
+    if len(sys.argv) > 1 and sys.argv[1] == "translate":
+        args = parse_translate_args(sys.argv[2:])
+        translated = " ".join(args.translation)
+        if args.entity_type == "progress":
+            set_progress_translation(args.id, translated)
+        else:
+            set_display_translation(
+                args.entity_type, 1 if args.entity_type == "task" else args.id, translated
+            )
+        print("Japanese display text saved.")
         return
 
     if len(sys.argv) > 1 and sys.argv[1] == "task":

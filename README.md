@@ -28,6 +28,8 @@ Version 1.5.2 displays the bundled dashboard's headings, controls, messages, tim
 
 Version 1.5.3 lets progress records keep their original message and a separate Japanese display translation. The dashboard shows `message_ja` when provided and retains `message` in SQLite and the API. Use `monitor progress --ja "日本語訳" "Original message"` for a new event, or `monitor progress translate <id> "日本語訳"` for an existing event. The agent integration contract instructs agents to write progress in the reader's language. Existing databases gain the optional translation column automatically when opened by the updated CLI or server.
 
+Version 1.5.4 extends separate Japanese display translations to the current task title, questions, and artifact labels. Use `monitor translate task "日本語訳"`, `monitor translate question <id> "日本語訳"`, or `monitor translate artifact <id> "日本語訳"`. The original values remain in their existing database columns and API fields. A task translation only applies while its original title matches, so a replacement task cannot inherit the wrong display text.
+
 The dashboard supports progress updates, a current task, unanswered questions, browser-submitted answers, registered artifact snapshots, and project-specific metrics. The installed CLI keeps each project's data and optional dashboard separate. The data is stored locally and the dashboard refreshes automatically.
 
 ## Run the dashboard
