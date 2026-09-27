@@ -113,9 +113,32 @@ Implemented behavior:
 
 The standard-library suite now contains 112 tests. Cross-platform CI has passed the new multi-recipient and legacy-migration tests on Windows and Ubuntu with Python 3.10 and 3.12.
 
+## Phase 15 multi-recipient N100 verification progress
+
+The N100 was updated to the 1.2.1 multi-recipient implementation.
+
+Verified so far:
+
+- the recipient list can be changed without re-entering SMTP credentials
+- after a recipient removal, a test notification delivered exactly once to Telegram and exactly once to the one remaining email recipient
+- the removed recipient did not receive that later test
+- delivery state recorded both remaining deliveries as `delivered`
+- the operator noticed that the wrong address had initially been left in the one-recipient configuration and corrected it using the stored send history
+- the final configured email recipient is the address that had originally been added as the second test recipient
+- the original Gmail recipient is removed
+- Email is OFF and Telegram is ON after cleanup
+- production 8765/9443 and `nashiri-core` 8766/9444 remain HTTP 200
+- Tailscale Serve configuration and repository files were not changed by the verification
+
+No email address is recorded in this repository state file.
+
 ## Next task
 
-Verify the Phase 15 multi-recipient extension on the N100 before starting Phase 16.
+Before marking the multi-recipient extension fully verified, confirm that the earlier `Phase 15 multi-recipient email test` was actually received by both configured email recipients as separate messages while Telegram received one notification.
+
+If that three-target delivery was confirmed, no additional email needs to be sent. Record the confirmation, mark the Phase 15 extension complete, and keep the final runtime configuration as Email OFF / Telegram ON with only the intended remaining email recipient.
+
+Phase 16 has not started.
 
 Use the existing disposable Phase 15 notification project. Confirm the previous Gmail recipient survives the 1.2.1 upgrade, add a second test recipient, enable email, send one question, and verify both addresses receive separate messages while Telegram still receives one notification. Then remove the second recipient and verify a later question goes only to the remaining email recipient plus Telegram.
 
