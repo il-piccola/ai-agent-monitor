@@ -1813,6 +1813,51 @@ class RunnerLifecycleTests(MonitorStorageTestCase):
 
         self.assertEqual(retried["status"], "pending")
 
+    def test_codex_preflight_uses_same_noninteractive_policy_as_worker(self) -> None:
+        completed = subprocess.CompletedProcess(
+            args=[],
+            returncode=0,
+            stdout="AI_AGENT_MONITOR_CODEX_OK\n",
+            stderr="",
+        )
+
+        with patch.object(monitor.subprocess, "run", return_value=completed) as run:
+            result = monitor.run_codex_preflight()
+
+        self.assertTrue(result["ok"])
+        argv = run.call_args.args[0]
+        self.assertEqual(
+            argv[:6],
+            [
+                "codex",
+                "-c",
+                'sandbox_mode="workspace-write"',
+                "-c",
+                'approval_policy="never"',
+                "exec",
+            ],
+        )
+        self.assertNotIn("--ask-for-approval", argv)
+        self.assertNotIn("--sandbox", argv)
+        self.assertIn("AI_AGENT_MONITOR_CODEX_OK", argv[-1])
+
+    def test_codex_preflight_failure_is_non_destructive_and_reported(self) -> None:
+        completed = subprocess.CompletedProcess(
+            args=[],
+            returncode=2,
+            stdout="",
+            stderr="unexpected argument",
+        )
+
+        with patch.object(monitor.subprocess, "run", return_value=completed):
+            result = monitor.run_codex_preflight()
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["exit_code"], 2)
+        self.assertEqual(result["error"], "unexpected argument")
+        self.assertEqual(monitor.list_resume_requests(), [])
+        self.assertEqual(monitor.list_resume_attempts(), [])
+
     def test_worker_resumes_exact_registered_codex_thread(self) -> None:
         _, question = self._register_waiting_question()
         monitor.answer_question(question["id"], "A")
