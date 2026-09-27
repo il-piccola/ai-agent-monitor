@@ -283,6 +283,8 @@ def _ensure_question_columns(connection: sqlite3.Connection) -> None:
         connection.execute("ALTER TABLE questions ADD COLUMN answer TEXT")
     if "answered_at" not in columns:
         connection.execute("ALTER TABLE questions ADD COLUMN answered_at TEXT")
+    if "runner_id" not in columns:
+        connection.execute("ALTER TABLE questions ADD COLUMN runner_id INTEGER")
 
 
 def _ensure_notification_deliveries_target(connection: sqlite3.Connection) -> None:
@@ -410,6 +412,67 @@ def connect_db() -> sqlite3.Connection:
         """
     )
     _ensure_question_columns(connection)
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS agent_runners (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            adapter TEXT NOT NULL,
+            external_id TEXT NOT NULL,
+            state TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            last_error TEXT,
+            UNIQUE(adapter, external_id)
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS answer_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            question_id INTEGER NOT NULL UNIQUE,
+            answer TEXT NOT NULL,
+            answered_at TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        INSERT OR IGNORE INTO answer_events (question_id, answer, answered_at)
+        SELECT id, answer, answered_at
+        FROM questions
+        WHERE status = 'answered' AND answer IS NOT NULL AND answered_at IS NOT NULL
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS resume_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            answer_event_id INTEGER NOT NULL UNIQUE,
+            question_id INTEGER NOT NULL,
+            runner_id INTEGER,
+            status TEXT NOT NULL,
+            reason TEXT,
+            created_at TEXT NOT NULL,
+            claimed_at TEXT,
+            completed_at TEXT
+        )
+        """
+    )
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS resume_attempts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            request_id INTEGER NOT NULL,
+            status TEXT NOT NULL,
+            pid INTEGER,
+            started_at TEXT NOT NULL,
+            finished_at TEXT,
+            exit_code INTEGER,
+            last_error TEXT
+        )
+        """
+    )
     connection.execute(
         """
         CREATE TABLE IF NOT EXISTS artifacts (
