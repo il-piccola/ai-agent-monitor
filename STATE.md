@@ -8,7 +8,7 @@
 - Formal release: `v1.0.0` published
 - Development package version: `1.4.0`
 - Completed phases: 1 through 16
-- Current phase: Phase 17 implemented; N100/iPhone verification pending
+- Current phase: Phase 17 registry display verified on N100/iPhone; dashboard-link navigation pending confirmation
 
 ## Verified baseline
 
@@ -93,8 +93,8 @@ The intended N100 deployment reuses the existing 8765/9443 server for the regist
 
 The standard-library suite passes all 140 tests on N100 for the Phase 17 implementation.
 
-N100 runtime verification: the existing 8765/9443 deployment was restarted on the same ports. `/registry`, `/api/registry`, and `/api/status` returned HTTP 200. The registry reported `ai-agent-monitor` and `nashiri-core` as available; the latter reported its active task and one unanswered question. Backend 8766 and HTTPS 9444 remained HTTP 200. The Serve mappings for 443, 8443, 8444, 9443, and 9444 remained unchanged. iPhone visual confirmation is pending.
+N100 runtime verification: the existing 8765/9443 deployment was restarted on the same ports. `/registry`, `/api/registry`, and `/api/status` returned HTTP 200. The registry reported `ai-agent-monitor` and `nashiri-core` as available; the latter reported its active task and one unanswered question. Backend 8766 and HTTPS 9444 remained HTTP 200. The Serve mappings for 443, 8443, 8444, 9443, and 9444 remained unchanged. On 2026-09-27, the human confirmed that both project cards are displayed on the iPhone. Opening each dashboard from its registry link is still awaiting human confirmation.
 
 ## Next task
 
-Confirm the two-project registry on iPhone. Phase 18 has not started.
+Confirm navigation from each iPhone registry card to its own dashboard. Phase 18 has not started.
