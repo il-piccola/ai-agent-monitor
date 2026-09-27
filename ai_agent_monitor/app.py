@@ -1669,16 +1669,43 @@ def _claim_resume_request() -> tuple[int, int] | None:
     with database_session() as connection:
         row = connection.execute(
             """
-            SELECT id
-            FROM resume_requests
-            WHERE status = 'pending'
-            ORDER BY id ASC
+            SELECT r.id, r.runner_id, runner.state
+            FROM resume_requests AS r
+            LEFT JOIN agent_runners AS runner ON runner.id = r.runner_id
+            WHERE r.status = 'pending'
+            ORDER BY r.id ASC
             LIMIT 1
             """
         ).fetchone()
         if row is None:
             return None
+
         request_id = int(row[0])
+        runner_id = int(row[1]) if row[1] is not None else None
+        runner_state = str(row[2]) if row[2] is not None else None
+        active_task = connection.execute(
+            "SELECT 1 FROM current_task WHERE id = 1"
+        ).fetchone()
+
+        cancel_reason = None
+        if active_task is None:
+            cancel_reason = "no_active_task_before_dispatch"
+        elif runner_id is None or runner_state is None:
+            cancel_reason = "runner_missing_before_dispatch"
+        elif runner_state != "waiting_for_human":
+            cancel_reason = f"runner_state_{runner_state}_before_dispatch"
+
+        if cancel_reason is not None:
+            connection.execute(
+                """
+                UPDATE resume_requests
+                SET status = 'cancelled', reason = ?, completed_at = ?
+                WHERE id = ? AND status = 'pending'
+                """,
+                (cancel_reason, now, request_id),
+            )
+            return None
+
         cursor = connection.execute(
             """
             UPDATE resume_requests
