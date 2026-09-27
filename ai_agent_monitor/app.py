@@ -1695,6 +1695,21 @@ def _claim_resume_request() -> tuple[int, int] | None:
         elif runner_state != "waiting_for_human":
             cancel_reason = f"runner_state_{runner_state}_before_dispatch"
 
+        if cancel_reason is None and runner_id is not None:
+            other_active = connection.execute(
+                """
+                SELECT 1
+                FROM resume_requests
+                WHERE runner_id = ?
+                  AND id != ?
+                  AND status IN ('claimed', 'running')
+                LIMIT 1
+                """,
+                (runner_id, request_id),
+            ).fetchone()
+            if other_active is not None:
+                return None
+
         if cancel_reason is not None:
             connection.execute(
                 """
