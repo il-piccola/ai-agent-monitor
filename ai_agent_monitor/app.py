@@ -3813,10 +3813,22 @@ def _doctor_runner() -> dict[str, object]:
             details={"auto_resume": True, "codex_command": command},
         )
 
-    with database_session() as connection:
-        uncertain = connection.execute(
-            "SELECT COUNT(*) FROM resume_requests WHERE status = 'uncertain'"
-        ).fetchone()[0]
+    uncertain = 0
+    if DB_PATH.is_file():
+        try:
+            with closing(_read_only_database()) as connection:
+                tables = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type = 'table'"
+                    ).fetchall()
+                }
+                if "resume_requests" in tables:
+                    uncertain = connection.execute(
+                        "SELECT COUNT(*) FROM resume_requests WHERE status = 'uncertain'"
+                    ).fetchone()[0]
+        except (sqlite3.Error, OSError):
+            pass
 
     if uncertain:
         return _doctor_result(
