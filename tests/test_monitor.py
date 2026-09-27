@@ -1740,6 +1740,22 @@ class RunnerLifecycleTests(MonitorStorageTestCase):
         self.assertEqual(result, {"claimed": 0, "launched": 0})
         self.assertEqual(monitor.list_resume_requests()[0]["status"], "pending")
 
+    def test_second_answer_waits_while_same_runner_resume_is_active(self) -> None:
+        _, first_question = self._register_waiting_question()
+        monitor.answer_question(first_question["id"], "A")
+        second_question = monitor.ask_question("Second decision?")
+        monitor.answer_question(second_question["id"], "B")
+
+        first_claim = monitor._claim_resume_request()
+        second_claim = monitor._claim_resume_request()
+
+        self.assertIsNotNone(first_claim)
+        self.assertIsNone(second_claim)
+        requests = monitor.list_resume_requests()
+        statuses = {item["question_id"]: item["status"] for item in requests}
+        self.assertEqual(statuses[first_question["id"]], "claimed")
+        self.assertEqual(statuses[second_question["id"]], "pending")
+
     def test_dispatch_launches_only_one_worker(self) -> None:
         _, question = self._register_waiting_question()
         monitor.answer_question(question["id"], "A")
