@@ -1595,6 +1595,259 @@ class NotificationOutboxTests(MonitorStorageTestCase):
         self.assertEqual(payload["notifications"][0]["status"], "delivered")
 
 
+class RunnerLifecycleTests(MonitorStorageTestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.project_root_patch = patch.object(monitor, "PROJECT_ROOT", self.root)
+        self.project_root_patch.start()
+        self.thread_env_patch = patch.dict(
+            os.environ,
+            {monitor.CODEX_THREAD_ID_ENV: "019f-test-thread"},
+        )
+        self.thread_env_patch.start()
+
+    def tearDown(self) -> None:
+        self.thread_env_patch.stop()
+        self.project_root_patch.stop()
+        super().tearDown()
+
+    def _register_waiting_question(self) -> tuple[dict[str, object], dict[str, object]]:
+        runner = monitor.register_runner("codex")
+        monitor.start_task("Continue after answer")
+        question = monitor.ask_question("Use A or B?")
+        return runner, question
+
+    def test_codex_runner_registers_from_thread_environment(self) -> None:
+        runner = monitor.register_runner("codex")
+
+        self.assertEqual(runner["external_id"], "019f-test-thread")
+        self.assertEqual(runner["state"], "running")
+        self.assertEqual(len(monitor.list_runners()), 1)
+
+    def test_runner_registration_requires_codex_thread_id(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaises(RuntimeError):
+                monitor.register_runner("codex")
+
+    def test_question_links_registered_runner_and_marks_waiting(self) -> None:
+        runner = monitor.register_runner("codex")
+
+        question = monitor.ask_question("Need a decision")
+
+        stored_runner = monitor.list_runners()[0]
+        self.assertEqual(stored_runner["id"], runner["id"])
+        self.assertEqual(stored_runner["state"], "waiting_for_human")
+        with monitor.database_session() as connection:
+            row = connection.execute(
+                "SELECT runner_id FROM questions WHERE id = ?",
+                (question["id"],),
+            ).fetchone()
+        self.assertEqual(row[0], runner["id"])
+
+    def test_answer_creates_separate_event_and_pending_resume_request(self) -> None:
+        runner, question = self._register_waiting_question()
+
+        monitor.answer_question(question["id"], "A")
+
+        with monitor.database_session() as connection:
+            answer = connection.execute(
+                "SELECT id, answer FROM answer_events WHERE question_id = ?",
+                (question["id"],),
+            ).fetchone()
+        requests = monitor.list_resume_requests()
+        self.assertEqual(answer[1], "A")
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(requests[0]["answer_event_id"], answer[0])
+        self.assertEqual(requests[0]["runner_id"], runner["id"])
+        self.assertEqual(requests[0]["status"], "pending")
+
+    def test_answer_without_active_task_does_not_schedule_resume(self) -> None:
+        monitor.register_runner("codex")
+        question = monitor.ask_question("Need a decision")
+
+        monitor.answer_question(question["id"], "A")
+
+        request = monitor.list_resume_requests()[0]
+        self.assertEqual(request["status"], "cancelled")
+        self.assertEqual(request["reason"], "no_active_task")
+
+    def test_answer_without_registered_runner_keeps_legacy_behavior(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            question = monitor.ask_question("Legacy question")
+            monitor.answer_question(question["id"], "Answer")
+
+        self.assertEqual(monitor.list_resume_requests(), [])
+        with monitor.database_session() as connection:
+            answer_count = connection.execute(
+                "SELECT COUNT(*) FROM answer_events"
+            ).fetchone()[0]
+        self.assertEqual(answer_count, 1)
+
+    def test_same_answer_cannot_create_duplicate_resume_request(self) -> None:
+        _, question = self._register_waiting_question()
+        monitor.answer_question(question["id"], "A")
+
+        with self.assertRaises(monitor.QuestionClosedError):
+            monitor.answer_question(question["id"], "A again")
+
+        self.assertEqual(len(monitor.list_resume_requests()), 1)
+
+    def test_claim_is_atomic_and_creates_one_attempt(self) -> None:
+        _, question = self._register_waiting_question()
+        monitor.answer_question(question["id"], "A")
+
+        first = monitor._claim_resume_request()
+        second = monitor._claim_resume_request()
+
+        self.assertIsNotNone(first)
+        self.assertIsNone(second)
+        self.assertEqual(len(monitor.list_resume_attempts()), 1)
+
+    def test_auto_resume_disabled_does_not_claim_request(self) -> None:
+        _, question = self._register_waiting_question()
+        monitor.answer_question(question["id"], "A")
+
+        result = monitor.dispatch_resume_requests()
+
+        self.assertEqual(result, {"claimed": 0, "launched": 0})
+        self.assertEqual(monitor.list_resume_requests()[0]["status"], "pending")
+
+    def test_dispatch_launches_only_one_worker(self) -> None:
+        _, question = self._register_waiting_question()
+        monitor.answer_question(question["id"], "A")
+        with patch.object(monitor, "_spawn_resume_worker", return_value=4321) as spawn:
+            first = monitor.dispatch_resume_requests(force=True)
+            second = monitor.dispatch_resume_requests(force=True)
+
+        self.assertEqual(first, {"claimed": 1, "launched": 1})
+        self.assertEqual(second, {"claimed": 0, "launched": 0})
+        spawn.assert_called_once()
+
+    def test_restart_recovery_marks_missing_worker_uncertain_without_retry(self) -> None:
+        _, question = self._register_waiting_question()
+        monitor.answer_question(question["id"], "A")
+        request_id, attempt_id = monitor._claim_resume_request()
+        with monitor.database_session() as connection:
+            connection.execute(
+                "UPDATE resume_requests SET status = 'running' WHERE id = ?",
+                (request_id,),
+            )
+            connection.execute(
+                """
+                UPDATE resume_attempts
+                SET status = 'running', pid = 999999
+                WHERE id = ?
+                """,
+                (attempt_id,),
+            )
+
+        with patch.object(monitor, "_process_is_alive", return_value=False):
+            recovered = monitor.recover_resume_requests()
+            dispatch = monitor.dispatch_resume_requests(force=True)
+
+        self.assertEqual(recovered["uncertain"], 1)
+        self.assertEqual(dispatch, {"claimed": 0, "launched": 0})
+        self.assertEqual(monitor.list_resume_requests()[0]["status"], "uncertain")
+
+    def test_uncertain_request_requires_explicit_manual_retry(self) -> None:
+        _, question = self._register_waiting_question()
+        monitor.answer_question(question["id"], "A")
+        request_id, attempt_id = monitor._claim_resume_request()
+        with monitor.database_session() as connection:
+            connection.execute(
+                "UPDATE resume_requests SET status = 'running' WHERE id = ?",
+                (request_id,),
+            )
+            connection.execute(
+                "UPDATE resume_attempts SET status = 'running', pid = 999999 WHERE id = ?",
+                (attempt_id,),
+            )
+        with patch.object(monitor, "_process_is_alive", return_value=False):
+            monitor.recover_resume_requests()
+
+        retried = monitor.retry_resume_request(request_id)
+
+        self.assertEqual(retried["status"], "pending")
+
+    def test_worker_resumes_exact_registered_codex_thread(self) -> None:
+        _, question = self._register_waiting_question()
+        monitor.answer_question(question["id"], "A")
+        request_id, attempt_id = monitor._claim_resume_request()
+        with monitor.database_session() as connection:
+            connection.execute(
+                "UPDATE resume_requests SET status = 'running' WHERE id = ?",
+                (request_id,),
+            )
+            connection.execute(
+                "UPDATE resume_attempts SET status = 'running', pid = 1234 WHERE id = ?",
+                (attempt_id,),
+            )
+
+        completed = subprocess.CompletedProcess(args=[], returncode=0)
+        with patch.object(monitor.subprocess, "run", return_value=completed) as run:
+            exit_code = monitor.run_resume_worker(attempt_id)
+
+        self.assertEqual(exit_code, 0)
+        argv = run.call_args.args[0]
+        self.assertEqual(argv[0], "codex")
+        self.assertIn("resume", argv)
+        resume_index = argv.index("resume")
+        self.assertEqual(argv[resume_index + 1], "019f-test-thread")
+        self.assertEqual(monitor.list_resume_requests()[0]["status"], "completed")
+        self.assertEqual(monitor.list_resume_attempts()[0]["status"], "completed")
+
+    def test_worker_failure_is_recorded_without_automatic_retry(self) -> None:
+        runner, question = self._register_waiting_question()
+        monitor.answer_question(question["id"], "A")
+        request_id, attempt_id = monitor._claim_resume_request()
+        with monitor.database_session() as connection:
+            connection.execute(
+                "UPDATE resume_requests SET status = 'running' WHERE id = ?",
+                (request_id,),
+            )
+            connection.execute(
+                "UPDATE resume_attempts SET status = 'running', pid = 1234 WHERE id = ?",
+                (attempt_id,),
+            )
+
+        failed = subprocess.CompletedProcess(args=[], returncode=7)
+        with patch.object(monitor.subprocess, "run", return_value=failed):
+            exit_code = monitor.run_resume_worker(attempt_id)
+
+        self.assertEqual(exit_code, 7)
+        request = monitor.list_resume_requests()[0]
+        attempt = monitor.list_resume_attempts()[0]
+        current_runner = monitor.list_runners()[0]
+        self.assertEqual(request["status"], "cancelled")
+        self.assertEqual(attempt["status"], "failed")
+        self.assertEqual(current_runner["id"], runner["id"])
+        self.assertEqual(current_runner["state"], "failed")
+
+    def test_runner_complete_closes_running_resume_request(self) -> None:
+        _, question = self._register_waiting_question()
+        monitor.answer_question(question["id"], "A")
+        request_id, _ = monitor._claim_resume_request()
+        with monitor.database_session() as connection:
+            connection.execute(
+                "UPDATE resume_requests SET status = 'running' WHERE id = ?",
+                (request_id,),
+            )
+
+        result = monitor.set_current_runner_state("completed")
+
+        self.assertEqual(result["state"], "completed")
+        self.assertEqual(monitor.list_resume_requests()[0]["status"], "completed")
+
+    def test_runner_config_is_ignored_and_auto_resume_preflights_codex(self) -> None:
+        with patch.object(monitor.shutil, "which", return_value="C:/codex.exe"):
+            config = monitor.set_auto_resume_enabled(True)
+
+        self.assertTrue(config["auto_resume"])
+        ignore_text = (monitor.DATA_DIR / ".gitignore").read_text(encoding="utf-8")
+        self.assertIn("runner.json", ignore_text.splitlines())
+
+
+
 class DoctorTests(MonitorStorageTestCase):
     def setUp(self) -> None:
         super().setUp()
