@@ -8,7 +8,7 @@
 - Formal release: `v1.0.0` published
 - Development package version: `1.2.1`
 - Completed phases: 1 through 15
-- Current phase: Phase 15 verified; multi-recipient email extension implementation complete, N100 verification pending; Phase 16 not started
+- Current phase: Phase 15 and its multi-recipient email extension verified on N100/iPhone; Phase 16 not started
 
 ## Phase 14 baseline
 
@@ -113,32 +113,36 @@ Implemented behavior:
 
 The standard-library suite now contains 112 tests. Cross-platform CI has passed the new multi-recipient and legacy-migration tests on Windows and Ubuntu with Python 3.10 and 3.12.
 
-## Phase 15 multi-recipient N100 verification progress
+## Phase 15 multi-recipient N100 verification
 
-The N100 was updated to the 1.2.1 multi-recipient implementation.
+The 1.2.1 multi-recipient email extension passed N100/iPhone verification.
 
-Verified so far:
+Verified behavior:
 
-- the recipient list can be changed without re-entering SMTP credentials
-- after a recipient removal, a test notification delivered exactly once to Telegram and exactly once to the one remaining email recipient
-- the removed recipient did not receive that later test
-- delivery state recorded both remaining deliveries as `delivered`
-- the operator noticed that the wrong address had initially been left in the one-recipient configuration and corrected it using the stored send history
-- the final configured email recipient is the address that had originally been added as the second test recipient
-- the original Gmail recipient is removed
+- the previous single-recipient configuration survived the 1.2.1 upgrade
+- a second recipient could be added without changing SMTP credentials
+- `Phase 15 multi-recipient email test` reached both configured email recipients as separate messages
+- the same test produced one Telegram notification, not one Telegram notification per email recipient
+- recipient addresses were not exposed to each other in the delivered email
+- after one recipient was removed, the later test delivered exactly once to Telegram and exactly once to the remaining email recipient
+- the removed recipient did not receive the later test
+- delivery records showed the remaining Telegram and email deliveries as `delivered`
+- the initially retained email address was corrected after the operator noticed the wrong address had been left in the configuration
+- the final recipient list contains only the intended address; the original Gmail recipient is removed
 - Email is OFF and Telegram is ON after cleanup
+- no pending notification remains
 - production 8765/9443 and `nashiri-core` 8766/9444 remain HTTP 200
-- Tailscale Serve configuration and repository files were not changed by the verification
+- Tailscale Serve configuration was unchanged
 
-No email address is recorded in this repository state file.
+No email address, Gmail app password, or Telegram bot token is recorded in repository documentation.
 
 ## Next task
 
-Before marking the multi-recipient extension fully verified, confirm that the earlier `Phase 15 multi-recipient email test` was actually received by both configured email recipients as separate messages while Telegram received one notification.
-
-If that three-target delivery was confirmed, no additional email needs to be sent. Record the confirmation, mark the Phase 15 extension complete, and keep the final runtime configuration as Email OFF / Telegram ON with only the intended remaining email recipient.
-
 Phase 16 has not started.
+
+Before implementing automatic resume, define the runner lifecycle and persistence model. Keep human answers, resume requests, resume attempts, and runner state as separate records. The first runner adapter should target the verified Codex workflow.
+
+Do not automatically launch or resume Codex until duplicate-resume prevention, completed-task handling, missing-runner handling, and restart recovery have explicit tests.
 
 Use the existing disposable Phase 15 notification project. Confirm the previous Gmail recipient survives the 1.2.1 upgrade, add a second test recipient, enable email, send one question, and verify both addresses receive separate messages while Telegram still receives one notification. Then remove the second recipient and verify a later question goes only to the remaining email recipient plus Telegram.
 
