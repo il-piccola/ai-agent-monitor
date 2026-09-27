@@ -315,3 +315,27 @@ Each email recipient becomes its own `notification_deliveries` row using the del
 The delivery-table migration converts the previous `UNIQUE(notification_id, channel)` layout to `UNIQUE(notification_id, channel, target)`. Existing single-recipient email deliveries inherit the configured legacy address when it can be determined.
 
 Removing a recipient cancels only that recipient's pending deliveries. Removing the last recipient also disables email notifications. Adding or removing recipients affects future notification events; already-created events retain their snapshotted delivery targets except that explicitly removed pending targets are cancelled.
+
+
+## Runner lifecycle and automatic resume
+
+Phase 16 separates four durable concepts:
+
+- `answer_events`: immutable records of human answers
+- `resume_requests`: one decision about whether a particular answer should resume work
+- `resume_attempts`: each actual launch attempt and its process/result state
+- `agent_runners`: external agent identity and lifecycle state
+
+The questions table keeps its existing answer columns for API compatibility and adds a nullable `runner_id`. Existing answered questions are backfilled into `answer_events` during normal database initialization.
+
+The first adapter is Codex. Repository onboarding tells Codex to register the current `CODEX_THREAD_ID`. The generic state model does not infer a runner from the newest session.
+
+Automatic resume is project-local and disabled by default in `.agent-monitor/runner.json`, which is ignored by Git. The adapter command may be configured without storing credentials.
+
+A pending request is claimed with a conditional SQLite update. Before claim, the monitor rechecks that a current task still exists, the runner still exists, and its state is still `waiting_for_human`. A second active request for the same runner blocks later requests until the first leaves the active state.
+
+The server launches a detached monitor worker rather than running Codex inside the HTTP thread. The worker invokes the exact stored Codex thread through `codex exec resume`. The argv is constructed as a list; the human answer is not interpolated into a shell command. The resumed Codex process uses an explicit project cwd, `workspace-write`, and `on-request` approvals.
+
+Crash recovery is conservative. A request whose worker PID is still alive remains active. If a request was claimed/running but its worker can no longer be proven alive, it becomes `uncertain`; the dispatcher does not automatically retry it. A human can inspect it and explicitly return it to pending with `monitor runner retry <id>`.
+
+This trades a possible manual recovery step for protection against launching two Codex processes after an ambiguous crash boundary.
