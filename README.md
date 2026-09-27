@@ -692,7 +692,7 @@ monitor runner codex set --command /path/to/codex
 
 When a registered Codex thread asks a question, the question is linked to that runner and the runner becomes `waiting_for_human`. A browser answer is stored as a separate answer event. If the task is still active and the runner is still waiting, one durable resume request is created.
 
-The running monitor server claims pending requests and starts a detached worker. The worker resumes the exact registered thread with `codex exec resume <thread-id>`, an explicit project directory, `workspace-write` sandboxing, and `on-request` approvals. It never uses `danger-full-access`.
+The running monitor server claims pending requests and starts a detached worker. The worker resumes the exact registered thread with `codex exec resume <thread-id>` and an explicit project directory. For compatibility with the verified N100 Codex CLI, it applies one-run config overrides `sandbox_mode="workspace-write"` and `approval_policy="never"` before the `exec` subcommand. Non-interactive resume therefore never waits for an approval UI and never uses `danger-full-access`.
 
 Safety behavior:
 
