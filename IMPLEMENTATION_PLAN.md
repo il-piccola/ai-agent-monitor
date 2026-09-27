@@ -271,7 +271,7 @@ Required failure behavior:
 
 Success condition: a real agent question reaches the user's iPhone without the dashboard already being open, while SQLite remains the authoritative question/answer store.
 
-## Phase 16: Runner lifecycle and automatic resume
+## Phase 16: Runner lifecycle and automatic resume ← implementation complete, N100 verification pending
 
 Model runner state before automatically starting or resuming an agent.
 
