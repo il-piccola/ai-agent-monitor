@@ -24,6 +24,8 @@ Phase 18 adds automatic telemetry derived from Monitor's own records. Its values
 
 Version 1.5.1 keeps CLI JSON ASCII-safe so PowerShell can parse Japanese project data even when the installed Python uses CP932 for native stdout. HTTP JSON remains UTF-8.
 
+Version 1.5.2 displays the bundled dashboard's headings, controls, messages, timestamps, and telemetry source descriptions in Japanese. Existing task, progress, question, artifact, and custom metric text remains exactly as recorded by each project. Phase 19 remains deferred while the active-project trial continues.
+
 The dashboard supports progress updates, a current task, unanswered questions, browser-submitted answers, registered artifact snapshots, and project-specific metrics. The installed CLI keeps each project's data and optional dashboard separate. The data is stored locally and the dashboard refreshes automatically.
 
 ## Run the dashboard
