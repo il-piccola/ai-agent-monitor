@@ -265,6 +265,14 @@
         </p>
       </section>
 
+      <section id="codex-cost-card" class="card" hidden>
+        <h2>CodexのAPI換算額</h2>
+        <p id="codex-cost-value" class="task-title">集計中です。</p>
+        <p id="codex-cost-detail" class="metric-updated"></p>
+        <p class="metric-updated">N100に保存されたこの案件の利用記録を、標準API料金で参考換算します。実際の請求額ではありません。</p>
+        <a href="https://developers.openai.com/api/docs/pricing" target="_blank" rel="noopener noreferrer">API料金表</a>
+      </section>
+
       <section class="card">
         <div class="card-heading">
           <h2>自動計測</h2>
@@ -327,6 +335,10 @@
     const metricsEmpty = document.querySelector("#metrics-empty");
     const metricGrid = document.querySelector("#metric-grid");
     const metricsError = document.querySelector("#metrics-error");
+    const codexCostCard = document.querySelector("#codex-cost-card");
+    const codexCostValue = document.querySelector("#codex-cost-value");
+    const codexCostDetail = document.querySelector("#codex-cost-detail");
+    let codexCostEnabled = null;
 
     const telemetryCount = document.querySelector("#telemetry-count");
     const telemetryEmpty = document.querySelector("#telemetry-empty");
@@ -662,6 +674,44 @@
       }
     }
 
+    async function refreshCodexCost() {
+      if (codexCostEnabled === false) return;
+      try {
+        const response = await fetch("/api/codex-cost", { cache: "no-store" });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        if (!data.enabled) {
+          codexCostEnabled = false;
+          codexCostCard.hidden = true;
+          return;
+        }
+        codexCostEnabled = true;
+        codexCostCard.hidden = false;
+        if (data.state === "calculating") {
+          codexCostValue.textContent = "集計中です。画面を開いたままお待ちください。";
+          return;
+        }
+        if (data.state === "error") {
+          codexCostValue.textContent = "集計できませんでした。自動的に再試行します。";
+          return;
+        }
+        if (!data.priced_responses) {
+          codexCostValue.textContent = "換算できるCodex利用記録はありません。";
+        } else {
+          codexCostValue.textContent = `${data.amount_usd} USD`;
+        }
+        const period = data.first_recorded_at && data.last_recorded_at
+          ? `対象期間: ${formatTimestamp(data.first_recorded_at)}〜${formatTimestamp(data.last_recorded_at)}`
+          : "対象期間: 記録なし";
+        const excluded = data.excluded_responses
+          ? `・公開単価のない処理 ${data.excluded_responses}件を除外` : "";
+        codexCostDetail.textContent = `${period}・換算 ${data.priced_responses}件${excluded}・料金基準 ${data.pricing_as_of}・集計 ${formatTimestamp(data.calculated_at)}`;
+      } catch (error) {
+        codexCostCard.hidden = false;
+        codexCostValue.textContent = "集計結果を取得できません。自動的に再試行します。";
+      }
+    }
+
     async function refreshTelemetry() {
       try {
         const response = await fetch("/api/telemetry", { cache: "no-store" });
@@ -726,6 +776,7 @@
     function refreshDashboard() {
       refreshTask();
       refreshMetrics();
+      refreshCodexCost();
       refreshTelemetry();
       refreshProgress();
       refreshArtifact();

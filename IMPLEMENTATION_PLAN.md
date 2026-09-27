@@ -330,6 +330,8 @@ Keep manual project metrics supported. Automatically collected metrics should re
 
 Do not infer cost, quality, or error rates from incomplete data.
 
+The active-project trial later added a separate opt-in **API-equivalent reference estimate** from local Codex token records. It is labeled with its recorded period, price-table date, and excluded-response count. It is not treated as authoritative billed cost or as a Phase 18 automatic measurement.
+
 Success condition: useful operational measurements appear without human entry and their provenance is clear.
 
 ## Phase 19: Second-agent portability verification (deferred; real-project adoption first)

@@ -75,6 +75,8 @@ The agent should interact through the monitor CLI rather than writing SQL direct
 
 Runtime database files must not be committed to Git.
 
+An opt-in Codex API-equivalent estimate reads local token-usage metadata from the current user's Codex session files. Its project-local cache under `.agent-monitor/runtime/` stores response IDs, model names, token counts, and timestamps; it stores no prompt or response text. The estimate runs on a background thread after a dashboard request and does not write to the Monitor SQLite database. It is a reference calculation at a dated API rate table, not billed cost.
+
 Phase 2 configures SQLite in WAL mode with a 5-second busy timeout so the server can read while progress events are recorded.
 
 ## Agent state and monitor history are different

@@ -34,6 +34,8 @@ Version 1.5.5 keeps the newest progress event visible and places older events in
 
 Version 1.6.1 sets each project's browser page title to its project directory name (normally the repository name). The bundled dashboard also shows that name as its main heading. Project-specific dashboards keep their custom heading and content.
 
+Version 1.6.2 adds an optional Codex API-equivalent cost estimate for projects that use the bundled dashboard. When enabled, opening the dashboard starts a background scan of that project's locally saved Codex token-usage records. The display refreshes after new records appear, without a new server or port. This is a reference estimate at the Standard API rates of 2026-09-28, not a ChatGPT or API bill.
+
 The dashboard supports progress updates, a current task, unanswered questions, browser-submitted answers, registered artifact snapshots, and project-specific metrics. The installed CLI keeps each project's data and optional dashboard separate. The data is stored locally and the dashboard refreshes automatically.
 
 ## Run the dashboard
@@ -769,3 +771,16 @@ monitor telemetry
 The same JSON is available at `/api/telemetry` and appears in the dashboard's **自動計測** section. Each measurement includes its source and `observed_at` timestamp. Available measurements include active and completed task duration, open and answered question counts, human wait time, and completed/failed automatic resume attempts and their duration. The completed-task history starts when version 1.5 handles a task completion or replacement; earlier completed tasks cannot be reconstructed from the previous single-current-task database.
 
 Manual `monitor metric` entries stay separate and editable. Telemetry does not infer tool failures, provider token usage, cost, cache usage, quality, or error rates because Monitor has no authoritative feed for those values. A missing source produces no invented measurement. A telemetry read on an empty project does not create a database.
+
+## Codex API-equivalent cost estimate
+
+Enable this per project from its root directory:
+
+```text
+monitor cost enable
+monitor cost status
+```
+
+The bundled dashboard then shows **CodexのAPI換算額**. It starts calculating when opened and checks for new session records in the background at most once every 30 seconds while the page is open. The backend reuses token metadata from unchanged files through an ignored, project-local cache in `.agent-monitor/runtime/`; it never copies prompt or response text into the cache. `monitor cost disable` hides the section. No extra process or Tailscale Serve port is needed.
+
+The estimate uses Codex JSONL `token_usage_record` entries whose session directory matches the current project, deduplicated by response ID. It applies the published Standard API text-token rates for GPT-5.6 Luna/Terra/Sol and GPT-6 Luna/Sol/Astra, including cached-input prices and the long-context multiplier when a request exceeds 272,000 input tokens. Unknown models, including `codex-auto-review`, are excluded and their count is displayed. The dashboard shows the covered record period and calculation time. Records missing from this device, other usage modes, tool-call fees, and actual ChatGPT plan charges are outside the estimate. The bundled rate table is fixed as of 2026-09-28 and should be updated when API prices change. Source: [OpenAI API pricing](https://developers.openai.com/api/docs/pricing).

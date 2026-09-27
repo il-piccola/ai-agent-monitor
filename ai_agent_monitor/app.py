@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Iterator
 
 from . import __version__
+from . import codex_cost
 from . import registry as project_registry
 from . import telemetry as project_telemetry
 
@@ -56,6 +57,9 @@ For development work in this repository, use the `ai-agent-monitor` repository s
 <!-- ai-agent-monitor:end -->"""
 DATA_DIR = PROJECT_ROOT / ".agent-monitor"
 DB_PATH = DATA_DIR / "monitor.db"
+CODEX_COST_CONFIG_PATH = DATA_DIR / "runtime" / "codex-cost.json"
+CODEX_COST_CACHE_PATH = DATA_DIR / "runtime" / "codex-cost-cache.json"
+CODEX_COST_MANAGER = codex_cost.CostEstimateManager()
 
 
 PROJECT_GITIGNORE = """monitor.db
@@ -4497,6 +4501,16 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self._serve_json({"metrics": list_metrics()})
             return
 
+        if path == "/api/codex-cost":
+            codex_home = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
+            self._serve_json(CODEX_COST_MANAGER.snapshot(
+                CODEX_COST_CONFIG_PATH,
+                PROJECT_ROOT,
+                codex_home / "sessions",
+                CODEX_COST_CACHE_PATH,
+            ))
+            return
+
         artifact_match = re.fullmatch(r"/artifacts/(\d+)", path)
         if artifact_match is not None:
             self._serve_artifact(int(artifact_match.group(1)))
@@ -4907,6 +4921,15 @@ def parse_artifact_args(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def parse_cost_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="monitor cost",
+        description="Show an optional Codex usage estimate at Standard API rates.",
+    )
+    parser.add_argument("action", choices=("enable", "disable", "status"))
+    return parser.parse_args(argv)
+
+
 def parse_registry_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="monitor registry",
@@ -5306,6 +5329,16 @@ def main() -> None:
 
     if len(sys.argv) > 1 and sys.argv[1] == "metrics":
         print(json.dumps({"metrics": list_metrics()}, ensure_ascii=True, indent=2))
+        return
+
+    if len(sys.argv) > 1 and sys.argv[1] == "cost":
+        args = parse_cost_args(sys.argv[2:])
+        if args.action == "enable":
+            codex_cost.set_enabled(CODEX_COST_CONFIG_PATH, True)
+        elif args.action == "disable":
+            codex_cost.set_enabled(CODEX_COST_CONFIG_PATH, False)
+        print(json.dumps({"enabled": codex_cost.enabled(CODEX_COST_CONFIG_PATH)},
+                         ensure_ascii=True, indent=2))
         return
 
     args = parse_server_args(sys.argv[1:])
