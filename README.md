@@ -651,3 +651,58 @@ The running monitor server polls pending deliveries every five seconds. Failed a
 If a question is answered before a pending notification is delivered, the pending delivery is cancelled. If Telegram has already succeeded while optional email is still pending, answering the question cancels only the email delivery and keeps the event recorded as delivered.
 
 `.agent-monitor/notifications.json` stores only non-secret project-local settings and is added to the nested `.gitignore`. Bot tokens and SMTP passwords are never written to that file or the notification database.
+
+
+## Codex runner lifecycle and automatic resume
+
+Version 1.3 adds an opt-in Codex runner adapter. Automatic resume is disabled by default.
+
+A Codex run prepared by the repository skill registers its current thread:
+
+```bash
+monitor runner register codex
+monitor status
+```
+
+Codex supplies the thread identity to shell tools through `CODEX_THREAD_ID`. The monitor stores that exact identity; automatic resume does not guess with `--last`.
+
+Inspect runner state:
+
+```bash
+monitor runner status
+```
+
+Enable automatic resume for the current project only after verifying the configured Codex executable:
+
+```bash
+monitor runner auto-resume on
+```
+
+Disable it with:
+
+```bash
+monitor runner auto-resume off
+```
+
+If Codex is not on PATH, configure an executable path first:
+
+```bash
+monitor runner codex set --command /path/to/codex
+```
+
+When a registered Codex thread asks a question, the question is linked to that runner and the runner becomes `waiting_for_human`. A browser answer is stored as a separate answer event. If the task is still active and the runner is still waiting, one durable resume request is created.
+
+The running monitor server claims pending requests and starts a detached worker. The worker resumes the exact registered thread with `codex exec resume <thread-id>`, an explicit project directory, `workspace-write` sandboxing, and `on-request` approvals. It never uses `danger-full-access`.
+
+Safety behavior:
+
+- one answer creates at most one resume request
+- only one resume for the same runner may be active at a time
+- task and runner state are checked again immediately before launch
+- completed/stopped/failed runners are not silently resumed
+- if restart recovery cannot prove whether a worker is still alive, the request becomes `uncertain` instead of being launched again
+- uncertain requests require explicit `monitor runner retry <id>`
+- launch and Codex failures remain in `resume_attempts`
+- automatic resume can be turned off without affecting stored human answers
+
+The Codex skill tells a completed resumed run to execute `monitor task done` followed by `monitor runner complete`.
