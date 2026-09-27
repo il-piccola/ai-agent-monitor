@@ -1790,6 +1790,10 @@ class RunnerLifecycleTests(MonitorStorageTestCase):
         self.assertEqual(exit_code, 0)
         argv = run.call_args.args[0]
         self.assertEqual(argv[0], "codex")
+        self.assertEqual(
+            argv[1:6],
+            ["exec", "--sandbox", "workspace-write", "--ask-for-approval", "on-request"],
+        )
         self.assertIn("resume", argv)
         resume_index = argv.index("resume")
         self.assertEqual(argv[resume_index + 1], "019f-test-thread")
