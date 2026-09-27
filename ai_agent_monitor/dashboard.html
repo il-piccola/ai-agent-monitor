@@ -354,6 +354,7 @@
     const codexCostValue = document.querySelector("#codex-cost-value");
     const codexCostDetail = document.querySelector("#codex-cost-detail");
     let codexCostEnabled = null;
+    let codexCostHasValue = false;
     const codexUsageCard = document.querySelector("#codex-usage-card");
     const codexUsageValue = document.querySelector("#codex-usage-value");
     const codexUsageDetail = document.querySelector("#codex-usage-detail");
@@ -707,21 +708,27 @@
           return;
         }
         codexCostEnabled = true;
+        if (data.state === "calculating") {
+          if (!codexCostHasValue) {
+            codexCostCard.hidden = false;
+            codexCostValue.textContent = "集計中です。画面を開いたままお待ちください。";
+            updateMetricCount();
+          }
+          return;
+        }
+        if (data.state === "error" || typeof data.priced_responses !== "number"
+            || !Number.isFinite(data.priced_responses)
+            || typeof data.amount_usd !== "string") {
+          return;
+        }
         codexCostCard.hidden = false;
         updateMetricCount();
-        if (data.state === "calculating") {
-          codexCostValue.textContent = "集計中です。画面を開いたままお待ちください。";
-          return;
-        }
-        if (data.state === "error") {
-          codexCostValue.textContent = "集計できませんでした。自動的に再試行します。";
-          return;
-        }
         if (!data.priced_responses) {
           codexCostValue.textContent = "換算できるCodex利用記録はありません。";
         } else {
           codexCostValue.textContent = `${data.amount_usd} USD`;
         }
+        codexCostHasValue = true;
         const period = data.first_recorded_at && data.last_recorded_at
           ? `対象期間: ${formatTimestamp(data.first_recorded_at)}〜${formatTimestamp(data.last_recorded_at)}`
           : "対象期間: 記録なし";
@@ -729,9 +736,7 @@
           ? `・公開単価のない処理 ${data.excluded_responses}件を除外` : "";
         codexCostDetail.textContent = `${period}・換算 ${data.priced_responses}件${excluded}・料金基準 ${data.pricing_as_of}・集計 ${formatTimestamp(data.calculated_at)}`;
       } catch (error) {
-        codexCostCard.hidden = false;
-        codexCostValue.textContent = "集計結果を取得できません。自動的に再試行します。";
-        updateMetricCount();
+        // A transient request failure must not replace the last successful estimate.
       }
     }
 

@@ -6,7 +6,7 @@
 - Visibility: public
 - Default branch: `main`
 - Formal release: `v1.0.0` published
-- Development package version: `1.6.4`
+- Development package version: `1.6.5`
 - Completed phases: 1 through 18
 - Current work: Phase 20 two-way Telegram answers; Phase 19 remains deferred at the human's request
 
@@ -132,3 +132,5 @@ N100 deployment verification: the installed CLI is 1.6.2. `nashiri-core` was sto
 Version 1.6.3 puts the dynamic API-equivalent estimate inside the existing project-metrics area. It adds an independently enabled Codex weekly remaining-quota card, clearly labeled as account-wide. The card reads the local Codex app-server rate-limit endpoint over stdio, exposes only the remaining percentage and timestamps, and does not start a new listening port. All 170 N100 tests and the dashboard JavaScript syntax check passed. The installed 1.6.3 CLI restarted `nashiri-core` on the same 8766/9444 ports. Its tailnet API returned a 44% weekly remainder, and a browser render showed both the cost estimate and quota under **案件メトリクス**. The displayed cost continues to update as project records arrive; it was 128.58 USD at the last browser check. All four Monitor local/tailnet URLs returned HTTP 200, and the Serve mappings for 443, 8443, 8444, 9443, and 9444 matched the baseline. iPhone visual confirmation of this layout remains pending. Phase 19 remains deferred.
 
 Version 1.6.4 keeps the last successful weekly-quota percentage and observation time unchanged when a dashboard request fails or Codex omits the weekly window. The server also retains its last successful value for page reloads. A later valid read updates the card normally. The N100 suite passed 171 tests and the dashboard JavaScript syntax check passed. The installed CLI restarted `nashiri-core` on the same 8766/9444 ports; its tailnet API returned a 42% weekly remainder and a browser render showed 42% under **案件メトリクス**. No new Serve entry or listening port was created. Phase 19 remains deferred.
+
+Version 1.6.5 applies the same last-successful-display behavior to the Codex API-equivalent cost estimate. A transient dashboard request failure or calculation error does not replace the displayed amount, covered period, or calculation time; a successful later result updates them. The backend already retained its last successful calculation, and a regression test now covers that behavior. All 172 N100 tests and the dashboard JavaScript syntax check passed. The installed CLI restarted `nashiri-core` on the same 8766/9444 ports, where the tailnet API and browser displayed 130.42 USD after the initial scan. No new port was created. Phase 19 remains deferred.

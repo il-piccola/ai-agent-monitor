@@ -40,6 +40,8 @@ Version 1.6.3 places that estimate inside **案件メトリクス** and can show
 
 Version 1.6.4 keeps the last successfully displayed weekly quota and observation time when a later refresh fails or omits the weekly window. The card updates only after a valid new result arrives.
 
+Version 1.6.5 applies the same display rule to the Codex API-equivalent cost estimate: a failed dashboard request leaves the last amount, covered period, and calculation time unchanged. A successful later calculation updates them.
+
 The dashboard supports progress updates, a current task, unanswered questions, browser-submitted answers, registered artifact snapshots, and project-specific metrics. The installed CLI keeps each project's data and optional dashboard separate. The data is stored locally and the dashboard refreshes automatically.
 
 ## Run the dashboard
@@ -785,7 +787,7 @@ monitor cost enable
 monitor cost status
 ```
 
-The bundled dashboard then shows **CodexのAPI換算額（案件記録分）** inside **案件メトリクス**. It starts calculating when opened and checks for new session records in the background at most once every 30 seconds while the page is open. The backend reuses token metadata from unchanged files through an ignored, project-local cache in `.agent-monitor/runtime/`; it never copies prompt or response text into the cache. `monitor cost disable` hides the card. No extra listening port or Tailscale Serve entry is needed.
+The bundled dashboard then shows **CodexのAPI換算額（案件記録分）** inside **案件メトリクス**. It starts calculating when opened and checks for new session records in the background at most once every 30 seconds while the page is open. A failed request leaves the last successful amount, period, and calculation time on screen; a later successful calculation updates them. The backend reuses token metadata from unchanged files through an ignored, project-local cache in `.agent-monitor/runtime/`; it never copies prompt or response text into the cache. `monitor cost disable` hides the card. No extra listening port or Tailscale Serve entry is needed.
 
 The estimate uses Codex JSONL `token_usage_record` entries whose session directory matches the current project, deduplicated by response ID. It applies the published Standard API text-token rates for GPT-5.6 Luna/Terra/Sol and GPT-6 Luna/Sol/Astra, including cached-input prices and the long-context multiplier when a request exceeds 272,000 input tokens. Unknown models, including `codex-auto-review`, are excluded and their count is displayed. The dashboard shows the covered record period and calculation time. Records missing from this device, other usage modes, tool-call fees, and actual ChatGPT plan charges are outside the estimate. The bundled rate table is fixed as of 2026-09-28 and should be updated when API prices change. Source: [OpenAI API pricing](https://developers.openai.com/api/docs/pricing).
 

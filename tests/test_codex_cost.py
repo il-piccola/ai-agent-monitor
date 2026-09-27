@@ -116,6 +116,26 @@ class CodexCostTests(unittest.TestCase):
             app.DashboardHandler.do_GET(fake)
         self.assertEqual(fake._serve_json.call_args.args[0], {"enabled": False})
 
+    def test_refresh_failure_preserves_last_successful_estimate(self):
+        codex_cost.set_enabled(self.config, True)
+        manager = codex_cost.CostEstimateManager()
+        estimate = {"amount_usd": "12.34", "priced_responses": 5,
+                    "calculated_at": "2026-09-28T00:00:00Z"}
+        with patch.object(codex_cost, "estimate", side_effect=[
+            estimate, RuntimeError("temporary scan failure")
+        ]):
+            manager._refresh(self.root, self.sessions, self.cache)
+            with manager._lock:
+                manager._last_start = time.monotonic()
+            first = manager.snapshot(self.config, self.root, self.sessions, self.cache)
+            manager._refresh(self.root, self.sessions, self.cache)
+            failed = manager.snapshot(self.config, self.root, self.sessions, self.cache)
+
+        self.assertEqual(first["state"], "ready")
+        self.assertEqual(failed["state"], "ready")
+        self.assertEqual(failed["amount_usd"], "12.34")
+        self.assertEqual(failed["calculated_at"], first["calculated_at"])
+
 
 if __name__ == "__main__":
     unittest.main()
