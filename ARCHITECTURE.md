@@ -334,7 +334,7 @@ Automatic resume is project-local and disabled by default in `.agent-monitor/run
 
 A pending request is claimed with a conditional SQLite update. Before claim, the monitor rechecks that a current task still exists, the runner still exists, and its state is still `waiting_for_human`. A second active request for the same runner blocks later requests until the first leaves the active state.
 
-The server launches a detached monitor worker rather than running Codex inside the HTTP thread. The worker invokes the exact stored Codex thread through `codex exec resume`. The argv is constructed as a list; the human answer is not interpolated into a shell command. The resumed Codex process uses an explicit project cwd, `workspace-write`, and `on-request` approvals.
+The server launches a detached monitor worker rather than running Codex inside the HTTP thread. The worker invokes the exact stored Codex thread through `codex exec resume`. The argv is constructed as a list; the human answer is not interpolated into a shell command. The resumed Codex process uses an explicit project cwd plus one-run config overrides for `sandbox_mode="workspace-write"` and `approval_policy="never"`. The non-interactive worker cannot wait for a human approval prompt, so operations that require leaving the workspace sandbox remain unavailable rather than escalating automatically.
 
 Crash recovery is conservative. A request whose worker PID is still alive remains active. If a request was claimed/running but its worker can no longer be proven alive, it becomes `uncertain`; the dispatcher does not automatically retry it. A human can inspect it and explicitly return it to pending with `monitor runner retry <id>`.
 
