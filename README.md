@@ -672,6 +672,14 @@ Inspect runner state:
 monitor runner status
 ```
 
+Before enabling automatic resume on a machine, run the built-in compatibility check:
+
+```bash
+monitor runner preflight
+```
+
+The preflight performs a harmless non-interactive Codex turn using the same `sandbox_mode="workspace-write"` and `approval_policy="never"` config overrides as the real resume worker. It exits nonzero if that invocation is not accepted.
+
 Enable automatic resume for the current project only after verifying the configured Codex executable:
 
 ```bash
