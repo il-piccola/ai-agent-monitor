@@ -296,7 +296,7 @@ Required safety behavior:
 
 Success condition: after a human answers from the iPhone, the appropriate Codex workflow continues and completes without the human manually starting another run.
 
-## Phase 17: Multi-project registry (N100/iPhone list verified; link navigation pending)
+## Phase 17: Multi-project registry (verified on N100 and iPhone)
 
 Provide one human entry point for multiple monitored projects without merging their project databases.
 

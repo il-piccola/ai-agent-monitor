@@ -18,7 +18,7 @@ Phases 11 through 13 are verified on the N100. Version 1.0.0 passed the real Cod
 
 Phases 14 through 16 are verified on the N100. Phase 16 passed a real iPhone answer and automatic resume of the registered Codex thread, plus isolated missing-worker recovery.
 
-Phase 17 adds a project registry. N100 checks and the two-project iPhone list display passed; iPhone dashboard-link navigation is awaiting confirmation.
+Phase 17 adds a project registry. Its two-project list and dashboard links are verified on the N100 and iPhone.
 
 The dashboard supports progress updates, a current task, unanswered questions, browser-submitted answers, registered artifact snapshots, and project-specific metrics. The installed CLI keeps each project's data and optional dashboard separate. The data is stored locally and the dashboard refreshes automatically.
 
