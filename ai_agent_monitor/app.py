@@ -59,6 +59,7 @@ monitor.db-shm
 monitor.db-wal
 monitor.db-journal
 notifications.json
+runner.json
 artifacts/
 runtime/
 """
