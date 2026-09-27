@@ -7,8 +7,8 @@
 - Default branch: `main`
 - Formal release: `v1.0.0` published
 - Development package version: `1.5.0`
-- Completed phases: 1 through 17
-- Current phase: Phase 18 implemented and running on N100; iPhone visual verification pending
+- Completed phases: 1 through 18
+- Current phase: Phase 18 verified on N100 and iPhone; Phase 19 not started
 
 ## Verified baseline
 
@@ -101,8 +101,8 @@ Version `1.5.0` adds read-only `monitor telemetry`, `/api/telemetry`, and a Japa
 
 `task_runs` begins recording completed or replaced tasks as version 1.5 handles them. Older completed tasks cannot be reconstructed. Reading telemetry on an empty project does not create a database. The standard-library suite passes 148 tests on N100.
 
-N100 runtime verification: the existing 8765/9443 server was restarted on those same ports. The dashboard HTML contains the Japanese automatic-telemetry section and returned HTTP 200. `/api/telemetry` returned schema 1, project identity, six measurements from the existing project database, source metadata, and observation timestamps. `/api/registry` still listed both projects. Backend 8766 and HTTPS 9444 returned HTTP 200. Serve mappings for 443, 8443, 8444, 9443, and 9444 were unchanged. iPhone visual confirmation is pending.
+N100 runtime verification: the existing 8765/9443 server was restarted on those same ports. The dashboard HTML contains the Japanese automatic-telemetry section and returned HTTP 200. `/api/telemetry` returned schema 1, project identity, six measurements from the existing project database, source metadata, and observation timestamps. `/api/registry` still listed both projects. Backend 8766 and HTTPS 9444 returned HTTP 200. Serve mappings for 443, 8443, 8444, 9443, and 9444 were unchanged. On 2026-09-27, the human confirmed that values and source labels are visible in the automatic-telemetry section on iPhone. Phase 18 success conditions are met.
 
 ## Next task
 
-Confirm the automatic-telemetry section on iPhone. The N100's installed `uv tool` CLI remains at 1.3.1 because the active `nashiri-core` server was left running; the repository source CLI contains version 1.5.0. Phase 19 has not started.
+Phase 19 second-agent portability verification has not started. The N100's installed `uv tool` CLI remains at 1.3.1 because the active `nashiri-core` server was left running; the repository source CLI contains version 1.5.0.

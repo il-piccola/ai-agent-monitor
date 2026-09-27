@@ -20,7 +20,7 @@ Phases 14 through 16 are verified on the N100. Phase 16 passed a real iPhone ans
 
 Phase 17 adds a project registry. Its two-project list and dashboard links are verified on the N100 and iPhone.
 
-Phase 18 adds automatic telemetry derived from Monitor's own records. N100 runtime checks passed; iPhone visual verification is pending.
+Phase 18 adds automatic telemetry derived from Monitor's own records. Its values and source labels are verified on the N100 and iPhone.
 
 The dashboard supports progress updates, a current task, unanswered questions, browser-submitted answers, registered artifact snapshots, and project-specific metrics. The installed CLI keeps each project's data and optional dashboard separate. The data is stored locally and the dashboard refreshes automatically.
 

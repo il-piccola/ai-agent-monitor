@@ -313,7 +313,7 @@ Show at least:
 
 Success condition: the user can open one iPhone URL, see which projects need attention, and navigate to each independent dashboard.
 
-## Phase 18: Automatic telemetry (running on N100; iPhone verification pending)
+## Phase 18: Automatic telemetry (verified on N100 and iPhone)
 
 Collect only measurements that can be observed reliably.
 
