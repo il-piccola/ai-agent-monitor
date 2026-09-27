@@ -1703,6 +1703,34 @@ class RunnerLifecycleTests(MonitorStorageTestCase):
         self.assertIsNone(second)
         self.assertEqual(len(monitor.list_resume_attempts()), 1)
 
+    def test_task_completed_after_answer_is_not_resumed(self) -> None:
+        _, question = self._register_waiting_question()
+        monitor.answer_question(question["id"], "A")
+        monitor.complete_task()
+
+        with patch.object(monitor, "_spawn_resume_worker") as spawn:
+            result = monitor.dispatch_resume_requests(force=True)
+
+        self.assertEqual(result, {"claimed": 0, "launched": 0})
+        spawn.assert_not_called()
+        request = monitor.list_resume_requests()[0]
+        self.assertEqual(request["status"], "cancelled")
+        self.assertEqual(request["reason"], "no_active_task_before_dispatch")
+
+    def test_runner_completed_after_answer_is_not_resumed(self) -> None:
+        _, question = self._register_waiting_question()
+        monitor.answer_question(question["id"], "A")
+        monitor.set_current_runner_state("completed")
+
+        with patch.object(monitor, "_spawn_resume_worker") as spawn:
+            result = monitor.dispatch_resume_requests(force=True)
+
+        self.assertEqual(result, {"claimed": 0, "launched": 0})
+        spawn.assert_not_called()
+        request = monitor.list_resume_requests()[0]
+        self.assertEqual(request["status"], "cancelled")
+        self.assertEqual(request["reason"], "runner_state_completed_before_dispatch")
+
     def test_auto_resume_disabled_does_not_claim_request(self) -> None:
         _, question = self._register_waiting_question()
         monitor.answer_question(question["id"], "A")
