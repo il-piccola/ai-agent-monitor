@@ -395,10 +395,16 @@ def connect_db() -> sqlite3.Connection:
         CREATE TABLE IF NOT EXISTS progress (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             message TEXT NOT NULL,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            message_ja TEXT
         )
         """
     )
+    progress_columns = {
+        row[1] for row in connection.execute("PRAGMA table_info(progress)")
+    }
+    if "message_ja" not in progress_columns:
+        connection.execute("ALTER TABLE progress ADD COLUMN message_ja TEXT")
     connection.execute(
         """
         CREATE TABLE IF NOT EXISTS current_task (
@@ -573,17 +579,21 @@ def database_session() -> Iterator[sqlite3.Connection]:
         connection.close()
 
 
-def record_progress(message: str) -> dict[str, object]:
+def record_progress(message: str, message_ja: str | None = None) -> dict[str, object]:
     message = message.strip()
     if not message:
         raise ValueError("Progress message must not be empty.")
+    if message_ja is not None:
+        message_ja = message_ja.strip()
+        if not message_ja:
+            raise ValueError("Japanese progress display text must not be empty.")
 
     created_at = utc_now()
 
     with database_session() as connection:
         cursor = connection.execute(
-            "INSERT INTO progress (message, created_at) VALUES (?, ?)",
-            (message, created_at),
+            "INSERT INTO progress (message, created_at, message_ja) VALUES (?, ?, ?)",
+            (message, created_at, message_ja),
         )
         progress_id = cursor.lastrowid
 
@@ -591,14 +601,28 @@ def record_progress(message: str) -> dict[str, object]:
         "id": progress_id,
         "message": message,
         "created_at": created_at,
+        "message_ja": message_ja,
     }
+
+
+def set_progress_translation(progress_id: int, message_ja: str) -> None:
+    message_ja = message_ja.strip()
+    if not message_ja:
+        raise ValueError("Japanese progress display text must not be empty.")
+    with database_session() as connection:
+        cursor = connection.execute(
+            "UPDATE progress SET message_ja = ? WHERE id = ?",
+            (message_ja, progress_id),
+        )
+        if cursor.rowcount != 1:
+            raise ValueError(f"Progress record {progress_id} does not exist.")
 
 
 def list_progress(limit: int = 50) -> list[dict[str, object]]:
     with database_session() as connection:
         rows = connection.execute(
             """
-            SELECT id, message, created_at
+            SELECT id, message, created_at, message_ja
             FROM progress
             ORDER BY id DESC
             LIMIT ?
@@ -607,7 +631,7 @@ def list_progress(limit: int = 50) -> list[dict[str, object]]:
         ).fetchall()
 
     return [
-        {"id": row[0], "message": row[1], "created_at": row[2]}
+        {"id": row[0], "message": row[1], "created_at": row[2], "message_ja": row[3]}
         for row in rows
     ]
 
@@ -4329,12 +4353,25 @@ def parse_server_args(argv: list[str]) -> argparse.Namespace:
 
 
 def parse_progress_args(argv: list[str]) -> argparse.Namespace:
+    if argv and argv[0] == "translate":
+        parser = argparse.ArgumentParser(
+            prog="monitor progress translate",
+            description="Add or update the Japanese display text of an existing progress record.",
+        )
+        parser.add_argument("id", type=int, help="Progress record ID")
+        parser.add_argument("translation", nargs="+", help="Japanese display text")
+        args = parser.parse_args(argv[1:])
+        args.action = "translate"
+        return args
     parser = argparse.ArgumentParser(
         prog="monitor progress",
         description="Record a progress message for the dashboard.",
     )
+    parser.add_argument("--ja", help="Japanese display text; keeps the original message")
     parser.add_argument("message", nargs="+", help="Progress message to record")
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    args.action = "record"
+    return args
 
 
 def parse_task_args(argv: list[str]) -> argparse.Namespace:
@@ -4801,8 +4838,12 @@ def main() -> None:
 
     if len(sys.argv) > 1 and sys.argv[1] == "progress":
         args = parse_progress_args(sys.argv[2:])
-        event = record_progress(" ".join(args.message))
-        print(f"Progress recorded: {event['message']}")
+        if args.action == "translate":
+            set_progress_translation(args.id, " ".join(args.translation))
+            print(f"Japanese display text saved for progress {args.id}.")
+        else:
+            event = record_progress(" ".join(args.message), args.ja)
+            print(f"Progress recorded: {event['message']}")
         return
 
     if len(sys.argv) > 1 and sys.argv[1] == "task":

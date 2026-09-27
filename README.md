@@ -26,6 +26,8 @@ Version 1.5.1 keeps CLI JSON ASCII-safe so PowerShell can parse Japanese project
 
 Version 1.5.2 displays the bundled dashboard's headings, controls, messages, timestamps, and telemetry source descriptions in Japanese. Existing task, progress, question, artifact, and custom metric text remains exactly as recorded by each project. Phase 19 remains deferred while the active-project trial continues.
 
+Version 1.5.3 lets progress records keep their original message and a separate Japanese display translation. The dashboard shows `message_ja` when provided and retains `message` in SQLite and the API. Use `monitor progress --ja "日本語訳" "Original message"` for a new event, or `monitor progress translate <id> "日本語訳"` for an existing event. The agent integration contract instructs agents to write progress in the reader's language. Existing databases gain the optional translation column automatically when opened by the updated CLI or server.
+
 The dashboard supports progress updates, a current task, unanswered questions, browser-submitted answers, registered artifact snapshots, and project-specific metrics. The installed CLI keeps each project's data and optional dashboard separate. The data is stored locally and the dashboard refreshes automatically.
 
 ## Run the dashboard

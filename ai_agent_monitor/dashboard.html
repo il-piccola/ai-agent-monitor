@@ -443,7 +443,7 @@
         const timestamp = document.createElement("time");
 
         message.className = "message";
-        message.textContent = item.message;
+        message.textContent = item.message_ja || item.message;
 
         timestamp.className = "timestamp";
         timestamp.dateTime = item.created_at;

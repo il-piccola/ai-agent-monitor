@@ -78,6 +78,21 @@ Useful progress events include completed milestones, meaningful test results, a 
 
 Do not report every file read, shell command, tool call, small edit, or internal reasoning step. The progress feed is a human-facing operational history, not a debug log.
 
+Write the human-facing progress in the user's language. When an English source
+message must remain intact for audit or technical context but the dashboard
+reader needs Japanese, save both in one event:
+
+```text
+monitor progress --ja "パーサーを実装し、関連テストがすべて成功しました。" "Implemented the parser and all parser tests pass"
+```
+
+The dashboard shows the Japanese text while the original message remains in
+the record. Existing records can be translated without changing the original:
+
+```text
+monitor progress translate 42 "既存の進捗記録の日本語訳"
+```
+
 ## Human questions
 
 When a human decision is genuinely required:

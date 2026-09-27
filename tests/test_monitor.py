@@ -33,6 +33,12 @@ class MonitorStorageTestCase(unittest.TestCase):
 
 
 class ProgressStorageTests(MonitorStorageTestCase):
+    def test_progress_cli_accepts_japanese_display_text(self) -> None:
+        args = monitor.parse_progress_args(["--ja", "日本語の進捗", "Original progress"])
+        self.assertEqual(args.action, "record")
+        self.assertEqual(args.ja, "日本語の進捗")
+        self.assertEqual(args.message, ["Original progress"])
+
     def test_progress_is_persisted_and_newest_is_first(self) -> None:
         first = monitor.record_progress("first")
         second = monitor.record_progress("second")
@@ -51,6 +57,35 @@ class ProgressStorageTests(MonitorStorageTestCase):
     def test_empty_progress_message_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             monitor.record_progress("   ")
+
+    def test_japanese_display_text_preserves_original_progress(self) -> None:
+        event = monitor.record_progress("Original English", "最初の日本語訳")
+        monitor.set_progress_translation(event["id"], "更新した日本語訳")
+
+        item = monitor.list_progress()[0]
+        self.assertEqual(item["message"], "Original English")
+        self.assertEqual(item["message_ja"], "更新した日本語訳")
+        with self.assertRaises(ValueError):
+            monitor.set_progress_translation(event["id"], "  ")
+        with self.assertRaises(ValueError):
+            monitor.set_progress_translation(event["id"] + 1, "存在しない記録")
+
+    def test_existing_progress_database_gains_translation_column(self) -> None:
+        self.root.joinpath(".agent-monitor").mkdir()
+        with closing(sqlite3.connect(self.root / ".agent-monitor" / "monitor.db")) as connection:
+            with connection:
+                connection.execute(
+                    "CREATE TABLE progress (id INTEGER PRIMARY KEY, message TEXT NOT NULL, created_at TEXT NOT NULL)"
+                )
+                connection.execute(
+                    "INSERT INTO progress VALUES (1, 'Legacy record', '2026-09-27T00:00:00Z')"
+                )
+
+        item = monitor.list_progress()[0]
+        self.assertEqual(item["message"], "Legacy record")
+        self.assertIsNone(item["message_ja"])
+        monitor.set_progress_translation(1, "以前の記録")
+        self.assertEqual(monitor.list_progress()[0]["message_ja"], "以前の記録")
 
 
 class CurrentTaskStorageTests(MonitorStorageTestCase):
