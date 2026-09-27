@@ -1909,7 +1909,7 @@ def _codex_exec_base_argv(command: str) -> list[str]:
         "-c",
         'sandbox_mode="workspace-write"',
         "-c",
-        'approval_policy="never"',
+        'approval_policy="on-request"',
         "exec",
     ]
 
@@ -1929,6 +1929,8 @@ def run_codex_preflight() -> dict[str, object]:
         stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     output = (result.stdout or "").strip()

@@ -1826,6 +1826,8 @@ class RunnerLifecycleTests(MonitorStorageTestCase):
 
         self.assertTrue(result["ok"])
         argv = run.call_args.args[0]
+        self.assertEqual(run.call_args.kwargs["encoding"], "utf-8")
+        self.assertEqual(run.call_args.kwargs["errors"], "replace")
         self.assertEqual(
             argv[:6],
             [
@@ -1833,7 +1835,7 @@ class RunnerLifecycleTests(MonitorStorageTestCase):
                 "-c",
                 'sandbox_mode="workspace-write"',
                 "-c",
-                'approval_policy="never"',
+                'approval_policy="on-request"',
                 "exec",
             ],
         )
@@ -1885,7 +1887,7 @@ class RunnerLifecycleTests(MonitorStorageTestCase):
                 "-c",
                 'sandbox_mode="workspace-write"',
                 "-c",
-                'approval_policy="never"',
+                'approval_policy="on-request"',
                 "exec",
             ],
         )

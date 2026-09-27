@@ -16,6 +16,8 @@ Phases 1 through 10 are verified on the N100. This includes Phase 9 tailnet-only
 
 Phases 11 through 13 are verified on the N100. Version 1.0.0 passed the real Codex workflow gate, including an iPhone human answer recovered by a later independent Codex run without the original chat transcript.
 
+Phases 14 through 16 are verified on the N100. Phase 16 passed a real iPhone answer and automatic resume of the registered Codex thread, plus isolated missing-worker recovery.
+
 The dashboard supports progress updates, a current task, unanswered questions, browser-submitted answers, registered artifact snapshots, and project-specific metrics. The installed CLI keeps each project's data and optional dashboard separate. The data is stored locally and the dashboard refreshes automatically.
 
 ## Run the dashboard
@@ -678,7 +680,7 @@ Before enabling automatic resume on a machine, run the built-in compatibility ch
 monitor runner preflight
 ```
 
-The preflight performs a harmless non-interactive Codex turn using the same `sandbox_mode="workspace-write"` and `approval_policy="never"` config overrides as the real resume worker. It exits nonzero if that invocation is not accepted.
+The preflight performs a harmless non-interactive Codex turn using the same `sandbox_mode="workspace-write"` and `approval_policy="on-request"` config overrides as the real resume worker. It exits nonzero if that invocation is not accepted.
 
 Enable automatic resume for the current project only after verifying the configured Codex executable:
 
@@ -700,7 +702,7 @@ monitor runner codex set --command /path/to/codex
 
 When a registered Codex thread asks a question, the question is linked to that runner and the runner becomes `waiting_for_human`. A browser answer is stored as a separate answer event. If the task is still active and the runner is still waiting, one durable resume request is created.
 
-The running monitor server claims pending requests and starts a detached worker. The worker resumes the exact registered thread with `codex exec resume <thread-id>` and an explicit project directory. For compatibility with the verified N100 Codex CLI, it applies one-run config overrides `sandbox_mode="workspace-write"` and `approval_policy="never"` before the `exec` subcommand. Non-interactive resume therefore never waits for an approval UI and never uses `danger-full-access`.
+The running monitor server claims pending requests and starts a detached worker. The worker resumes the exact registered thread with `codex exec resume <thread-id>` and an explicit project directory. For compatibility with the verified N100 Codex CLI, it applies one-run config overrides `sandbox_mode="workspace-write"` and `approval_policy="on-request"` before the `exec` subcommand. Work requiring an approval may not complete unattended; the worker records the outcome and never uses `danger-full-access`.
 
 Safety behavior:
 

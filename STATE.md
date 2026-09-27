@@ -7,8 +7,8 @@
 - Default branch: `main`
 - Formal release: `v1.0.0` published
 - Development package version: `1.3.1`
-- Completed phases: 1 through 15
-- Current phase: Phase 16 implementation complete; N100 real-runner verification pending
+- Completed phases: 1 through 16
+- Current phase: Phase 16 verified on N100; Phase 17 not started
 
 ## Verified baseline
 
@@ -27,7 +27,7 @@ Version 1.2.1 multi-recipient email delivery passed the real two-recipient fan-o
 
 ## Phase 16 implementation
 
-Version `1.3.0` adds an opt-in Codex runner lifecycle and automatic-resume path.
+Version `1.3.1` includes an opt-in Codex runner lifecycle and automatic-resume path.
 
 Durable records are separate:
 
@@ -61,7 +61,7 @@ Safety behavior covered by tests:
 - worker/Codex failures remain inspectable
 - auto-resume disabled leaves requests pending
 - the worker resumes the exact stored Codex thread, never `--last`
-- automatic Codex resume uses one-run config overrides `sandbox_mode="workspace-write"` and `approval_policy="never"`; it does not use `danger-full-access`
+- automatic Codex resume uses one-run config overrides `sandbox_mode="workspace-write"` and `approval_policy="on-request"`; it does not use `danger-full-access`
 - runner config is project-local and ignored by Git
 - doctor remains read-only and reports runner configuration/recovery warnings
 
@@ -71,41 +71,20 @@ The standard-library suite contains 133 tests.
 
 Current Codex CLI exposes `CODEX_THREAD_ID` to shell tool executions and supports non-interactive `codex exec resume <thread-id> <prompt>`. The Phase 16 adapter relies on those public CLI behaviors rather than scraping Codex rollout files.
 
-## Phase 16 N100 preflight finding
+## Phase 16 N100 verification (2026-09-27)
 
-The first N100 preflight stopped before any real Codex task was launched. The installed Codex CLI accepted `exec resume` but rejected `--ask-for-approval` as an unknown argument.
-
-No Phase 16 Codex task, human question, resume request, or automatic resume was executed during that failed preflight. The disposable 8767/9445 remote was stopped, production 8765/9443 and `nashiri-core` 8766/9444 remained HTTP 200, existing Serve mappings were restored, and the repository remained clean.
-
-Version `1.3.1` uses Codex config overrides instead of the unsupported post-`exec` approval flag:
+The first preflight found that N100 Codex CLI `0.155.0-alpha.16.4` rejects `--ask-for-approval`. The supported one-run configuration is:
 
 ```text
-codex -c sandbox_mode="workspace-write" -c approval_policy="never" exec ...
+codex -c sandbox_mode="workspace-write" -c approval_policy="on-request" exec ...
 ```
 
-`monitor runner preflight` now executes a harmless Codex turn through the same shared argv builder used by the real resume worker. This prevents the N100 verification command from drifting away from the production adapter again.
+In the disposable `phase16-runner-test` project, a fresh Codex run registered its exact thread ID, started a task, and asked which value to write. The initial run stopped with no result file and one open question. Telegram delivered the question; the human answered `ALPHA` on the iPhone dashboard. Without a manual Codex launch, the registered thread resumed, wrote exactly one `ALPHA` line, completed the task and runner, and left one completed request and attempt with exit code 0. A subsequent dispatch claimed and launched zero requests. The full iPhone path used the same `on-request` policy with the config override placed after `exec`.
 
-The sandbox remains workspace-scoped. Because automatic resume is non-interactive, the approval policy is `never`: the worker cannot pause for an approval UI, and it does not receive danger-full-access.
+The `1.3.1` shared argv builder places both config overrides before `exec`. Its N100 preflight and a separate exact `exec resume` invocation passed. Preflight now decodes Codex output as UTF-8 on Windows, avoiding the observed CP932 decode error. The standard-library suite has 133 passing tests.
+
+In a separate disposable project, a synthetic missing worker PID changed one running request and attempt to `uncertain`; dispatch claimed and launched zero requests, and no worker process was started. The test project's auto-resume setting was returned to OFF and its 8767/9445 remote was stopped. Production 8765/9443 and `nashiri-core` 8766/9444 returned HTTP 200; the original Serve mappings remained in place.
 
 ## Next task
-
-Verify Phase 16 on the N100 before beginning Phase 17.
-
-Use a disposable real Codex project, not `ai-agent-monitor` production state and not the production `nashiri-core` task.
-
-Verification must establish:
-
-1. current N100 Codex exposes `CODEX_THREAD_ID` inside its shell tool execution
-2. `codex exec resume <thread-id>` is available and the saved login works non-interactively
-3. installing/updating the Codex monitor integration causes a fresh Codex run to register its thread
-4. a real task remains active when Codex asks a genuine blocking question
-5. the iPhone receives the Telegram notification
-6. answering from the iPhone dashboard creates exactly one pending resume request
-7. with auto-resume enabled, the server resumes the same registered thread without a human starting another Codex run
-8. the resumed Codex reads `monitor status`, uses the stored answer, continues the task, and completes it
-9. task completion and runner completion are recorded
-10. no second Codex process is launched for the same answer
-11. a deliberately simulated missing worker becomes `uncertain` and is not automatically retried
-12. production 8765/9443, `nashiri-core` 8766/9444, notification settings, and existing Serve mappings remain unchanged
 
 Phase 17 has not started.
