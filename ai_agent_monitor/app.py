@@ -33,6 +33,7 @@ from typing import Iterator
 
 from . import __version__
 from . import codex_cost
+from . import codex_usage
 from . import registry as project_registry
 from . import telemetry as project_telemetry
 
@@ -60,6 +61,8 @@ DB_PATH = DATA_DIR / "monitor.db"
 CODEX_COST_CONFIG_PATH = DATA_DIR / "runtime" / "codex-cost.json"
 CODEX_COST_CACHE_PATH = DATA_DIR / "runtime" / "codex-cost-cache.json"
 CODEX_COST_MANAGER = codex_cost.CostEstimateManager()
+CODEX_USAGE_CONFIG_PATH = DATA_DIR / "runtime" / "codex-usage.json"
+CODEX_USAGE_MANAGER = codex_usage.WeeklyUsageManager()
 
 
 PROJECT_GITIGNORE = """monitor.db
@@ -4511,6 +4514,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
             ))
             return
 
+        if path == "/api/codex-usage":
+            self._serve_json(CODEX_USAGE_MANAGER.snapshot(CODEX_USAGE_CONFIG_PATH))
+            return
+
         artifact_match = re.fullmatch(r"/artifacts/(\d+)", path)
         if artifact_match is not None:
             self._serve_artifact(int(artifact_match.group(1)))
@@ -4930,6 +4937,15 @@ def parse_cost_args(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def parse_usage_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="monitor usage",
+        description="Show the signed-in Codex account's weekly remaining limit.",
+    )
+    parser.add_argument("action", choices=("enable", "disable", "status"))
+    return parser.parse_args(argv)
+
+
 def parse_registry_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="monitor registry",
@@ -5338,6 +5354,16 @@ def main() -> None:
         elif args.action == "disable":
             codex_cost.set_enabled(CODEX_COST_CONFIG_PATH, False)
         print(json.dumps({"enabled": codex_cost.enabled(CODEX_COST_CONFIG_PATH)},
+                         ensure_ascii=True, indent=2))
+        return
+
+    if len(sys.argv) > 1 and sys.argv[1] == "usage":
+        args = parse_usage_args(sys.argv[2:])
+        if args.action == "enable":
+            codex_usage.set_enabled(CODEX_USAGE_CONFIG_PATH, True)
+        elif args.action == "disable":
+            codex_usage.set_enabled(CODEX_USAGE_CONFIG_PATH, False)
+        print(json.dumps({"enabled": codex_usage.enabled(CODEX_USAGE_CONFIG_PATH)},
                          ensure_ascii=True, indent=2))
         return
 

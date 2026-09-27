@@ -332,6 +332,8 @@ Do not infer cost, quality, or error rates from incomplete data.
 
 The active-project trial later added a separate opt-in **API-equivalent reference estimate** from local Codex token records. It is labeled with its recorded period, price-table date, and excluded-response count. It is not treated as authoritative billed cost or as a Phase 18 automatic measurement.
 
+The active-project trial also placed that estimate in the existing project-metrics area and added an independently opt-in card for the account-wide Codex weekly quota. The quota comes from Codex's documented rate-limit read endpoint, not from a project token estimate. This usability work does not advance Phase 19.
+
 Success condition: useful operational measurements appear without human entry and their provenance is clear.
 
 ## Phase 19: Second-agent portability verification (deferred; real-project adoption first)

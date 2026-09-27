@@ -77,6 +77,8 @@ Runtime database files must not be committed to Git.
 
 An opt-in Codex API-equivalent estimate reads local token-usage metadata from the current user's Codex session files. Its project-local cache under `.agent-monitor/runtime/` stores response IDs, model names, token counts, and timestamps; it stores no prompt or response text. The estimate runs on a background thread after a dashboard request and does not write to the Monitor SQLite database. It is a reference calculation at a dated API rate table, not billed cost.
 
+An independently opt-in weekly quota card reads the signed-in Codex account's seven-day rate-limit window through the local app-server stdio protocol. A short-lived read-only subprocess is started on a background thread no more than once per minute while requested. The dashboard API includes only remaining percentage, reset time, and observation time. Account credentials, identifiers, and the full app-server response stay out of Monitor storage and HTTP responses. This quota is shared across the Codex account, not attributed to a monitored project.
+
 Phase 2 configures SQLite in WAL mode with a 5-second busy timeout so the server can read while progress events are recorded.
 
 ## Agent state and monitor history are different

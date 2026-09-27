@@ -36,6 +36,8 @@ Version 1.6.1 sets each project's browser page title to its project directory na
 
 Version 1.6.2 adds an optional Codex API-equivalent cost estimate for projects that use the bundled dashboard. When enabled, opening the dashboard starts a background scan of that project's locally saved Codex token-usage records. The display refreshes after new records appear, without a new server or port. This is a reference estimate at the Standard API rates of 2026-09-28, not a ChatGPT or API bill.
 
+Version 1.6.3 places that estimate inside **案件メトリクス** and can show the signed-in Codex account's weekly remaining quota beside it. The weekly quota is account-wide, not project-specific, and its card says so. It uses the documented local Codex app-server over stdio; no new listening port is opened.
+
 The dashboard supports progress updates, a current task, unanswered questions, browser-submitted answers, registered artifact snapshots, and project-specific metrics. The installed CLI keeps each project's data and optional dashboard separate. The data is stored locally and the dashboard refreshes automatically.
 
 ## Run the dashboard
@@ -781,6 +783,17 @@ monitor cost enable
 monitor cost status
 ```
 
-The bundled dashboard then shows **CodexのAPI換算額**. It starts calculating when opened and checks for new session records in the background at most once every 30 seconds while the page is open. The backend reuses token metadata from unchanged files through an ignored, project-local cache in `.agent-monitor/runtime/`; it never copies prompt or response text into the cache. `monitor cost disable` hides the section. No extra process or Tailscale Serve port is needed.
+The bundled dashboard then shows **CodexのAPI換算額（案件記録分）** inside **案件メトリクス**. It starts calculating when opened and checks for new session records in the background at most once every 30 seconds while the page is open. The backend reuses token metadata from unchanged files through an ignored, project-local cache in `.agent-monitor/runtime/`; it never copies prompt or response text into the cache. `monitor cost disable` hides the card. No extra listening port or Tailscale Serve entry is needed.
 
 The estimate uses Codex JSONL `token_usage_record` entries whose session directory matches the current project, deduplicated by response ID. It applies the published Standard API text-token rates for GPT-5.6 Luna/Terra/Sol and GPT-6 Luna/Sol/Astra, including cached-input prices and the long-context multiplier when a request exceeds 272,000 input tokens. Unknown models, including `codex-auto-review`, are excluded and their count is displayed. The dashboard shows the covered record period and calculation time. Records missing from this device, other usage modes, tool-call fees, and actual ChatGPT plan charges are outside the estimate. The bundled rate table is fixed as of 2026-09-28 and should be updated when API prices change. Source: [OpenAI API pricing](https://developers.openai.com/api/docs/pricing).
+
+## Codex weekly remaining quota
+
+Enable this separately for a trusted project dashboard:
+
+```text
+monitor usage enable
+monitor usage status
+```
+
+The **Codex週間枠残量（アカウント共通）** card appears inside **案件メトリクス**. It reads the signed-in Codex account's core seven-day quota through `codex app-server` using its local stdio protocol and `account/rateLimits/read`. The read runs in the background, refreshes at most once per minute while a dashboard is open, and exposes only the remaining percentage, reset time, and observation time through `/api/codex-usage`. No account ID, email, token, or reset-credit information is sent to the dashboard. If no seven-day quota is returned, the card says it cannot be determined rather than inferring a value. `monitor usage disable` hides the card. The CLI executable path is saved in ignored project-local runtime configuration so Windows logon startup does not depend on PATH. Source: [Codex app-server account rate limits](https://learn.chatgpt.com/docs/app-server).

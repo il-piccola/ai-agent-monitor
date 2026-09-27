@@ -204,6 +204,14 @@
       gap: 12px;
     }
 
+    #derived-metric-grid {
+      margin-top: 12px;
+    }
+
+    .metric-wide {
+      grid-column: 1 / -1;
+    }
+
     .metric {
       padding: 14px;
       border: 1px solid color-mix(in srgb, CanvasText 15%, transparent);
@@ -260,17 +268,23 @@
         </div>
         <p id="metrics-empty" class="empty">メトリクスはまだ登録されていません。</p>
         <div id="metric-grid" class="metric-grid" hidden></div>
+        <div id="derived-metric-grid" class="metric-grid" hidden>
+          <div id="codex-cost-card" class="metric metric-wide" hidden>
+            <span class="metric-label">CodexのAPI換算額（案件記録分）</span>
+            <span id="codex-cost-value" class="metric-value">集計中です。</span>
+            <span id="codex-cost-detail" class="metric-updated"></span>
+            <span class="metric-updated">N100の利用記録を標準API料金で参考換算。実際の請求額ではありません。</span>
+            <a href="https://developers.openai.com/api/docs/pricing" target="_blank" rel="noopener noreferrer">API料金表</a>
+          </div>
+          <div id="codex-usage-card" class="metric" hidden>
+            <span class="metric-label">Codex週間枠残量（アカウント共通）</span>
+            <span id="codex-usage-value" class="metric-value">取得中です。</span>
+            <span id="codex-usage-detail" class="metric-updated"></span>
+          </div>
+        </div>
         <p id="metrics-error" class="load-error" hidden>
           メトリクスを取得できません。自動的に再試行します。
         </p>
-      </section>
-
-      <section id="codex-cost-card" class="card" hidden>
-        <h2>CodexのAPI換算額</h2>
-        <p id="codex-cost-value" class="task-title">集計中です。</p>
-        <p id="codex-cost-detail" class="metric-updated"></p>
-        <p class="metric-updated">N100に保存されたこの案件の利用記録を、標準API料金で参考換算します。実際の請求額ではありません。</p>
-        <a href="https://developers.openai.com/api/docs/pricing" target="_blank" rel="noopener noreferrer">API料金表</a>
       </section>
 
       <section class="card">
@@ -334,11 +348,16 @@
     const metricCount = document.querySelector("#metric-count");
     const metricsEmpty = document.querySelector("#metrics-empty");
     const metricGrid = document.querySelector("#metric-grid");
+    const derivedMetricGrid = document.querySelector("#derived-metric-grid");
     const metricsError = document.querySelector("#metrics-error");
     const codexCostCard = document.querySelector("#codex-cost-card");
     const codexCostValue = document.querySelector("#codex-cost-value");
     const codexCostDetail = document.querySelector("#codex-cost-detail");
     let codexCostEnabled = null;
+    const codexUsageCard = document.querySelector("#codex-usage-card");
+    const codexUsageValue = document.querySelector("#codex-usage-value");
+    const codexUsageDetail = document.querySelector("#codex-usage-detail");
+    let codexUsageEnabled = null;
 
     const telemetryCount = document.querySelector("#telemetry-count");
     const telemetryEmpty = document.querySelector("#telemetry-empty");
@@ -396,16 +415,17 @@
       taskActive.hidden = false;
     }
 
+    function updateMetricCount() {
+      const manual = metricGrid.children.length;
+      const derived = Number(!codexCostCard.hidden) + Number(!codexUsageCard.hidden);
+      metricCount.textContent = `${manual + derived}件`;
+      metricsEmpty.hidden = manual + derived > 0;
+      metricGrid.hidden = manual === 0;
+      derivedMetricGrid.hidden = derived === 0;
+    }
+
     function renderMetrics(items) {
       metricGrid.replaceChildren();
-      metricCount.textContent = `${items.length}件`;
-
-      if (items.length === 0) {
-        metricGrid.hidden = true;
-        metricsEmpty.hidden = false;
-        return;
-      }
-
       for (const item of items) {
         const card = document.createElement("div");
         const label = document.createElement("span");
@@ -428,8 +448,7 @@
         metricGrid.append(card);
       }
 
-      metricsEmpty.hidden = true;
-      metricGrid.hidden = false;
+      updateMetricCount();
     }
 
     const telemetrySources = {
@@ -683,10 +702,12 @@
         if (!data.enabled) {
           codexCostEnabled = false;
           codexCostCard.hidden = true;
+          updateMetricCount();
           return;
         }
         codexCostEnabled = true;
         codexCostCard.hidden = false;
+        updateMetricCount();
         if (data.state === "calculating") {
           codexCostValue.textContent = "集計中です。画面を開いたままお待ちください。";
           return;
@@ -709,6 +730,42 @@
       } catch (error) {
         codexCostCard.hidden = false;
         codexCostValue.textContent = "集計結果を取得できません。自動的に再試行します。";
+        updateMetricCount();
+      }
+    }
+
+    async function refreshCodexUsage() {
+      if (codexUsageEnabled === false) return;
+      try {
+        const response = await fetch("/api/codex-usage", { cache: "no-store" });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        if (!data.enabled) {
+          codexUsageEnabled = false;
+          codexUsageCard.hidden = true;
+          updateMetricCount();
+          return;
+        }
+        codexUsageEnabled = true;
+        codexUsageCard.hidden = false;
+        updateMetricCount();
+        if (data.state === "calculating") {
+          codexUsageValue.textContent = "取得中です。";
+          return;
+        }
+        if (data.state === "error" || data.state === "unavailable"
+            || !Number.isFinite(Number(data.remaining_percent))) {
+          codexUsageValue.textContent = "週間枠を確認できません。";
+          return;
+        }
+        codexUsageValue.textContent = `${Number(data.remaining_percent).toLocaleString("ja-JP", { maximumFractionDigits: 1 })} %`;
+        const reset = data.resets_at ? `枠のリセット: ${formatTimestamp(data.resets_at)}・` : "";
+        const stale = data.state === "stale" ? "・最新値を取得できず、前回値を表示" : "";
+        codexUsageDetail.textContent = `アカウント共通・${reset}取得: ${formatTimestamp(data.observed_at)}${stale}`;
+      } catch (error) {
+        codexUsageCard.hidden = false;
+        codexUsageValue.textContent = "週間枠を取得できません。自動的に再試行します。";
+        updateMetricCount();
       }
     }
 
@@ -777,6 +834,7 @@
       refreshTask();
       refreshMetrics();
       refreshCodexCost();
+      refreshCodexUsage();
       refreshTelemetry();
       refreshProgress();
       refreshArtifact();
