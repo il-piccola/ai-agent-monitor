@@ -122,6 +122,21 @@
       border-top: 0;
     }
 
+    .progress-history {
+      margin-top: 14px;
+      border-top: 1px solid color-mix(in srgb, CanvasText 12%, transparent);
+      padding-top: 12px;
+    }
+
+    .progress-history summary {
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .progress-history .progress-list {
+      margin-top: 14px;
+    }
+
     .message,
     .question-text {
       display: block;
@@ -266,6 +281,10 @@
         <h2>最近の進捗</h2>
         <p id="progress-empty" class="empty">進捗はまだ記録されていません。</p>
         <ul id="progress-list" class="progress-list" hidden></ul>
+        <details id="progress-history" class="progress-history" hidden>
+          <summary id="progress-history-summary">過去の進捗を表示</summary>
+          <ul id="progress-history-list" class="progress-list"></ul>
+        </details>
         <p id="progress-error" class="load-error" hidden>
           進捗を取得できません。自動的に再試行します。
         </p>
@@ -315,8 +334,19 @@
     const telemetryError = document.querySelector("#telemetry-error");
 
     const progressList = document.querySelector("#progress-list");
+    const progressHistory = document.querySelector("#progress-history");
+    const progressHistorySummary = document.querySelector("#progress-history-summary");
+    const progressHistoryList = document.querySelector("#progress-history-list");
     const progressEmpty = document.querySelector("#progress-empty");
     const progressError = document.querySelector("#progress-error");
+    let progressSignature = null;
+
+    function updateProgressHistorySummary() {
+      const count = Number(progressHistory.dataset.count || 0);
+      progressHistorySummary.textContent = `${progressHistory.open ? "過去の進捗を閉じる" : "過去の進捗を表示"}（${count}件）`;
+    }
+
+    progressHistory.addEventListener("toggle", updateProgressHistorySummary);
 
     const artifactEmpty = document.querySelector("#artifact-empty");
     const artifactActive = document.querySelector("#artifact-active");
@@ -429,15 +459,23 @@
     }
 
     function renderProgress(items) {
+      const signature = JSON.stringify(items);
+      if (signature === progressSignature) {
+        return;
+      }
+      progressSignature = signature;
       progressList.replaceChildren();
+      progressHistoryList.replaceChildren();
 
       if (items.length === 0) {
         progressList.hidden = true;
+        progressHistory.hidden = true;
+        progressHistory.open = false;
         progressEmpty.hidden = false;
         return;
       }
 
-      for (const item of items) {
+      for (const [index, item] of items.entries()) {
         const row = document.createElement("li");
         const message = document.createElement("span");
         const timestamp = document.createElement("time");
@@ -450,9 +488,15 @@
         timestamp.textContent = formatTimestamp(item.created_at);
 
         row.append(message, timestamp);
-        progressList.append(row);
+        (index === 0 ? progressList : progressHistoryList).append(row);
       }
 
+      progressHistory.dataset.count = String(items.length - 1);
+      progressHistory.hidden = items.length === 1;
+      if (items.length === 1) {
+        progressHistory.open = false;
+      }
+      updateProgressHistorySummary();
       progressEmpty.hidden = true;
       progressList.hidden = false;
     }

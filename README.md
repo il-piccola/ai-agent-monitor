@@ -30,6 +30,8 @@ Version 1.5.3 lets progress records keep their original message and a separate J
 
 Version 1.5.4 extends separate Japanese display translations to the current task title, questions, and artifact labels. Use `monitor translate task "日本語訳"`, `monitor translate question <id> "日本語訳"`, or `monitor translate artifact <id> "日本語訳"`. The original values remain in their existing database columns and API fields. A task translation only applies while its original title matches, so a replacement task cannot inherit the wrong display text.
 
+Version 1.5.5 keeps the newest progress event visible and places older events in an expandable section on the same dashboard. The section stays open across the three-second refresh when the data has not changed. This changes only the presentation; progress records and the `/api/progress` response are unchanged.
+
 The dashboard supports progress updates, a current task, unanswered questions, browser-submitted answers, registered artifact snapshots, and project-specific metrics. The installed CLI keeps each project's data and optional dashboard separate. The data is stored locally and the dashboard refreshes automatically.
 
 ## Run the dashboard
