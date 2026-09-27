@@ -1939,11 +1939,11 @@ def run_resume_worker(attempt_id: int) -> int:
     command = str(config.get("codex_command") or DEFAULT_CODEX_COMMAND)
     argv = [
         command,
+        "-c",
+        'sandbox_mode="workspace-write"',
+        "-c",
+        'approval_policy="never"',
         "exec",
-        "--sandbox",
-        "workspace-write",
-        "--ask-for-approval",
-        "on-request",
         "-C",
         str(PROJECT_ROOT),
         "resume",
