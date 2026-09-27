@@ -4123,6 +4123,52 @@ def parse_ask_args(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def parse_runner_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="monitor runner",
+        description="Manage agent runner identity and automatic resume.",
+    )
+    subparsers = parser.add_subparsers(dest="action", required=True)
+
+    register = subparsers.add_parser(
+        "register",
+        help="Register the current agent session",
+    )
+    register.add_argument("adapter", choices=("codex",))
+    register.add_argument(
+        "--external-id",
+        help="Explicit external runner ID; Codex normally uses CODEX_THREAD_ID.",
+    )
+
+    subparsers.add_parser("status", help="Show runner and resume state")
+    subparsers.add_parser("complete", help="Mark the current registered runner completed")
+    subparsers.add_parser("stop", help="Mark the current registered runner stopped")
+
+    auto_resume = subparsers.add_parser(
+        "auto-resume",
+        help="Enable or disable automatic resume",
+    )
+    auto_resume.add_argument("enabled", choices=("on", "off"))
+
+    codex = subparsers.add_parser("codex", help="Configure the Codex executable")
+    codex_actions = codex.add_subparsers(dest="codex_action", required=True)
+    codex_set = codex_actions.add_parser("set", help="Set Codex executable path or command")
+    codex_set.add_argument("--command", required=True)
+
+    subparsers.add_parser("dispatch", help="Force one pending resume dispatch")
+
+    retry = subparsers.add_parser(
+        "retry",
+        help="Manually retry an uncertain resume request",
+    )
+    retry.add_argument("request_id", type=int)
+
+    worker = subparsers.add_parser("worker", help=argparse.SUPPRESS)
+    worker.add_argument("attempt_id", type=int)
+
+    return parser.parse_args(argv)
+
+
 def parse_notify_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="monitor notify",
@@ -4254,6 +4300,83 @@ def serve(port: int) -> None:
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "runner":
+        args = parse_runner_args(sys.argv[2:])
+        if args.action == "register":
+            runner = register_runner(args.adapter, args.external_id)
+            print(
+                json.dumps(
+                    {
+                        "id": runner["id"],
+                        "adapter": runner["adapter"],
+                        "state": runner["state"],
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return
+        if args.action == "status":
+            print(
+                json.dumps(
+                    {
+                        "config": runner_config_public(),
+                        **runner_snapshot(),
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return
+        if args.action == "complete":
+            print(
+                json.dumps(
+                    set_current_runner_state("completed"),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return
+        if args.action == "stop":
+            print(
+                json.dumps(
+                    set_current_runner_state("stopped"),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return
+        if args.action == "auto-resume":
+            config = set_auto_resume_enabled(args.enabled == "on")
+            print(
+                f"Automatic resume {'enabled' if config['auto_resume'] else 'disabled'}."
+            )
+            return
+        if args.action == "codex":
+            command = configure_codex_command(args.command)
+            print(f"Codex command configured: {command}")
+            return
+        if args.action == "dispatch":
+            print(
+                json.dumps(
+                    dispatch_resume_requests(force=True),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return
+        if args.action == "retry":
+            print(
+                json.dumps(
+                    retry_resume_request(args.request_id),
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            )
+            return
+        if args.action == "worker":
+            raise SystemExit(run_resume_worker(args.attempt_id))
+
     if len(sys.argv) > 1 and sys.argv[1] == "notify":
         args = parse_notify_args(sys.argv[2:])
         if args.section == "status":
