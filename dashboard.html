@@ -314,7 +314,6 @@
           <h2>自動計測</h2>
           <span id="telemetry-count" class="status">0件</span>
         </div>
-        <p id="telemetry-empty" class="empty">計測できる記録はまだありません。</p>
         <div id="telemetry-grid" class="metric-grid" hidden></div>
         <p id="telemetry-error" class="load-error" hidden>
           自動計測を取得できません。自動的に再試行します。
@@ -393,7 +392,6 @@
     let codexUsageSignature = null;
 
     const telemetryCount = document.querySelector("#telemetry-count");
-    const telemetryEmpty = document.querySelector("#telemetry-empty");
     const telemetryGrid = document.querySelector("#telemetry-grid");
     const telemetryError = document.querySelector("#telemetry-error");
 
@@ -534,34 +532,34 @@
     const telemetryPrimaryOrder = [
       ["task.active_seconds", "現在のタスクの経過時間"],
       ["task.completed_count", "完了したタスク"],
+      ["task.last_completed_seconds", "直近の完了タスクの所要時間"],
       ["question.open_count", "未回答の質問"],
       ["question.answered_count", "回答済みの質問"],
+      ["question.oldest_open_seconds", "最も古い未回答の待機時間"],
       ["question.last_answer_wait_seconds", "直近の回答までの待機時間"],
       ["resume.completed_count", "成功した自動再開"],
       ["resume.failed_count", "失敗した自動再開"],
+      ["resume.last_attempt_seconds", "直近の自動再開の所要時間"],
     ];
     const telemetryPrimaryKeys = new Set(telemetryPrimaryOrder.map(([key]) => key));
+    const telemetryUnavailableMessages = {
+      "task.active_seconds": "タスク実行中のみ計測します。",
+      "task.last_completed_seconds": "完了したタスクができると計測します。",
+      "question.oldest_open_seconds": "未回答の質問があると計測します。",
+      "question.last_answer_wait_seconds": "回答履歴ができると計測します。",
+      "resume.last_attempt_seconds": "自動再開の試行後に計測します。",
+    };
 
     function renderTelemetry(items) {
       telemetryGrid.replaceChildren();
-      if (items.length === 0) {
-        telemetryCount.textContent = "0件";
-        telemetryGrid.hidden = true;
-        telemetryEmpty.hidden = false;
-        return;
-      }
-
       const byKey = new Map(items.map((item) => [item.key, item]));
       const displayed = telemetryPrimaryOrder.flatMap(([key, label]) => {
         const measured = byKey.get(key);
         if (measured) return [measured];
-        if (key === "task.active_seconds" || key === "question.last_answer_wait_seconds") {
-          return [{ key, label, unavailable: true }];
-        }
-        return [];
+        return [{ key, label, unavailable: true }];
       });
       displayed.push(...items.filter((item) => !telemetryPrimaryKeys.has(item.key)));
-      telemetryCount.textContent = `${displayed.length}件`;
+      telemetryCount.textContent = `${displayed.length}項目`;
 
       for (const item of displayed) {
         const card = document.createElement("div");
@@ -575,8 +573,8 @@
         provenance.className = "metric-updated";
         if (item.unavailable) {
           value.textContent = "—";
-          provenance.textContent = item.key === "task.active_seconds"
-            ? "タスク実行中のみ計測します。" : "回答履歴ができると計測します。";
+          provenance.textContent = telemetryUnavailableMessages[item.key]
+            ?? "記録ができると計測します。";
         } else {
           value.textContent = `${item.value} ${item.unit}`;
           provenance.textContent = `出典: ${telemetrySources[item.source] ?? "保存済み記録"} · 観測: ${formatTimestamp(item.observed_at)}`;
@@ -584,7 +582,6 @@
         card.append(label, value, provenance);
         telemetryGrid.append(card);
       }
-      telemetryEmpty.hidden = true;
       telemetryGrid.hidden = false;
     }
 

@@ -6,9 +6,11 @@
 - Visibility: public
 - Default branch: `main`
 - Formal release: `v1.0.0` published
-- Development package version: `1.6.10`
+- Development package version: `1.6.11`
 - Completed phases: 1 through 18
 - Current work: active-project use and UI refinements, including the Phase 20 real-project reply path; Phase 19 remains deferred at the human's request
+
+Version 1.6.11 fixes the dashboard's project-to-project telemetry mismatch: all ten known automatic-measurement slots now remain in the same order, with `—` when no source record exists. The Codex API-equivalent estimate and account-wide weekly balance are enabled for `ai-agent-monitor`, `nashiri-core`, `sleep-improvement-app`, and `moonlight-bamboo`. Project-specific values still come from each project's own records; a missing active task never produces an invented elapsed time. All 175 N100 tests and the dashboard JavaScript syntax check passed. The installed CLI was updated to 1.6.11, and all four Monitor URLs returned HTTP 200 on their original 9443–9446 ports. Headless Chromium at 900px and 390px confirmed identical section order, ten telemetry labels, two Codex cards, and card heights across the four projects. Each project's cost API returned a ready amount; the weekly balance was ready and consistent across all four. During the update, an orphaned old `nashiri-core` backend kept the uv tool environment locked; its project ID, process tree, and 8766 listener were verified before that old backend alone was stopped. The registered Monitor was then restored at 8766/9444. Existing game Serve entries were not changed. iPhone Safari was not tested in this pass.
 
 ## Verified baseline
 
