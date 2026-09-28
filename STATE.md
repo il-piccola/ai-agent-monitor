@@ -8,7 +8,7 @@
 - Formal release: `v1.0.0` published
 - Development package version: `1.6.8`
 - Completed phases: 1 through 18
-- Current work: Phase 20 two-way Telegram answers; Phase 19 remains deferred at the human's request
+- Current work: active-project use and UI refinements, including the Phase 20 real-project reply path; Phase 19 remains deferred at the human's request
 
 ## Verified baseline
 
