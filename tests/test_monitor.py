@@ -33,6 +33,24 @@ class MonitorStorageTestCase(unittest.TestCase):
 
 
 class ProgressStorageTests(MonitorStorageTestCase):
+    def test_progress_cli_prints_utf8_when_native_stdout_is_cp932(self) -> None:
+        environment = os.environ.copy()
+        environment["PYTHONIOENCODING"] = "cp932:strict"
+        result = subprocess.run(
+            [sys.executable, str(Path(__file__).resolve().parents[1] / "monitor.py"),
+             "progress", "進捗—確認"],
+            cwd=self.root,
+            env=environment,
+            capture_output=True,
+            timeout=20,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr.decode("utf-8", errors="replace"))
+        self.assertIn("Progress recorded: 進捗—確認", result.stdout.decode("utf-8"))
+        with closing(sqlite3.connect(self.root / ".agent-monitor" / "monitor.db")) as db:
+            self.assertEqual(
+                db.execute("SELECT message FROM progress").fetchone()[0], "進捗—確認"
+            )
+
     def test_progress_cli_accepts_japanese_display_text(self) -> None:
         args = monitor.parse_progress_args(["--ja", "日本語の進捗", "Original progress"])
         self.assertEqual(args.action, "record")

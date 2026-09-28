@@ -50,6 +50,8 @@ Version 1.6.8 shortens the project-metrics section and gives automatic telemetry
 
 Version 1.6.9 keeps the main automatic-telemetry cards in the same order across projects. When there is no active task, the elapsed-time card stays in its usual first position and shows a dash rather than an invented duration. The last-answer wait card behaves the same way when no answer exists. Additional measurements follow the shared cards.
 
+Version 1.6.10 also emits human-readable CLI output as UTF-8 on Windows. This prevents a successfully stored Japanese progress message from being followed by a CP932 encoding error when it contains a character such as an em dash. Machine-readable JSON stays ASCII escaped.
+
 The dashboard supports progress updates, a current task, unanswered questions, browser-submitted answers, registered artifact snapshots, and project-specific metrics. The installed CLI keeps each project's data and optional dashboard separate. The data is stored locally and the dashboard refreshes automatically.
 
 ## Run the dashboard

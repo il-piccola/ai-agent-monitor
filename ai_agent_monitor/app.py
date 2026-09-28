@@ -5018,6 +5018,11 @@ def serve(port: int) -> None:
 def main() -> None:
     # CLI JSON escapes non-ASCII text so Windows PowerShell can parse it even
     # when Python's native stdout encoding is CP932. HTTP JSON remains UTF-8.
+    # Human-readable CLI output may contain characters outside CP932. Print it
+    # as UTF-8 so recording a valid message cannot fail after the database commit.
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if callable(reconfigure):
+        reconfigure(encoding="utf-8", errors="backslashreplace")
     if len(sys.argv) > 1 and sys.argv[1] == "registry":
         args = parse_registry_args(sys.argv[2:])
         path = registry_path()
