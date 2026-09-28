@@ -48,6 +48,8 @@ Version 1.6.7 puts Questions directly below automatic telemetry and adds an expa
 
 Version 1.6.8 shortens the project-metrics section and gives automatic telemetry more room while keeping the fixed-height layout. The `ai-agent-monitor` repository itself also uses the same Codex integration contract as other monitored projects, so future development work can populate its own dashboard instead of leaving it with only setup-test data.
 
+Version 1.6.9 keeps the main automatic-telemetry cards in the same order across projects. When there is no active task, the elapsed-time card stays in its usual first position and shows a dash rather than an invented duration. The last-answer wait card behaves the same way when no answer exists. Additional measurements follow the shared cards.
+
 The dashboard supports progress updates, a current task, unanswered questions, browser-submitted answers, registered artifact snapshots, and project-specific metrics. The installed CLI keeps each project's data and optional dashboard separate. The data is stored locally and the dashboard refreshes automatically.
 
 ## Run the dashboard
