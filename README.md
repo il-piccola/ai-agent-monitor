@@ -44,6 +44,8 @@ Version 1.6.5 applies the same display rule to the Codex API-equivalent cost est
 
 Version 1.6.6 reuses project-metric cards on each dashboard poll. An unchanged value, label, and unit leave a manual card untouched, even if its stored update time changes. The Codex cost card changes only when its amount or covered-record data changes; the weekly-quota card changes only when its percentage or reset time changes. Repeated background checks alone do not repaint the cards.
 
+Version 1.6.7 puts Questions directly below automatic telemetry and adds an expandable history of answered questions. Opening that history loads all answered question/answer pairs, using a saved Japanese question translation when present. Each main dashboard section has a fixed height and scrolls internally so errors and expanded content do not move later sections. The Codex API-equivalent estimate is a compact card labeled as a reference amount, with the same width as the weekly-quota card at each screen size; detailed estimate metadata remains in `/api/codex-cost`.
+
 The dashboard supports progress updates, a current task, unanswered questions, browser-submitted answers, registered artifact snapshots, and project-specific metrics. The installed CLI keeps each project's data and optional dashboard separate. The data is stored locally and the dashboard refreshes automatically.
 
 ## Run the dashboard
@@ -249,6 +251,8 @@ The same data is also available from:
 ```text
 GET /api/answers
 ```
+
+The dashboard loads the full answered-question history only when its collapsed history is opened. The API includes `question_ja` when a saved Japanese display translation exists. The CLI `answers` command remains limited to recent answers by default.
 
 Existing Phase 4 databases are migrated automatically by adding the answer columns when the application first opens the database after updating.
 

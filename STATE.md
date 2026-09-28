@@ -6,7 +6,7 @@
 - Visibility: public
 - Default branch: `main`
 - Formal release: `v1.0.0` published
-- Development package version: `1.6.6`
+- Development package version: `1.6.7`
 - Completed phases: 1 through 18
 - Current work: Phase 20 two-way Telegram answers; Phase 19 remains deferred at the human's request
 
@@ -136,3 +136,5 @@ Version 1.6.4 keeps the last successful weekly-quota percentage and observation 
 Version 1.6.5 applies the same last-successful-display behavior to the Codex API-equivalent cost estimate. A transient dashboard request failure or calculation error does not replace the displayed amount, covered period, or calculation time; a successful later result updates them. The backend already retained its last successful calculation, and a regression test now covers that behavior. All 172 N100 tests and the dashboard JavaScript syntax check passed. The installed CLI restarted `nashiri-core` on the same 8766/9444 ports, where the tailnet API and browser displayed 130.42 USD after the initial scan. No new port was created. Phase 19 remains deferred.
 
 Version 1.6.6 reuses manual project-metric cards and skips writes when their key, label, value, and unit are unchanged. The Codex cost and weekly-quota cards also ignore background calculation/observation timestamps when their meaningful values have not changed. The full N100 suite still passes 172 tests and the dashboard JavaScript syntax check passes. The installed CLI restarted `nashiri-core` on its existing 8766/9444 ports. In the browser, 131.62 USD and 38% stayed displayed with their original timestamps while the API reported later calculation/observation times for the same values. Both cards remained inside **案件メトリクス**. The four local/tailnet Monitor URLs returned HTTP 200, existing Serve mappings were preserved, and no new port was created. Phase 19 remains deferred.
+
+Version 1.6.7 moves **質問** immediately below **自動計測** and adds a collapsed, on-demand history of every answered question and its answer. Japanese display translations are preferred where present. Dashboard section heights are fixed with internal scrolling, so error messages or expanded content do not shift lower sections. The Codex API-equivalent card now shares the weekly-quota card's column width and shows only its short reference label and amount. All 174 N100 tests and the dashboard JavaScript syntax check passed. The installed CLI and source deployment were restarted on their existing 8766/9444 and 8765/9443 ports. In the N100 browser, the real `nashiri-core` dashboard showed the requested section order, compact cost card, and all three answered questions when expanded. `/api/answers` returned the three answers; the 9443 dashboard served the updated UI. All four local/tailnet Monitor URLs returned HTTP 200, and Serve mappings for 443, 8443, 8444, 9443, and 9444 remained unchanged. No new port was created. Phase 19 remains deferred.

@@ -2859,18 +2859,24 @@ def answer_question(question_id: int, answer: str) -> dict[str, object]:
     }
 
 
-def list_answered_questions(limit: int = 50) -> list[dict[str, object]]:
+def list_answered_questions(limit: int | None = 50) -> list[dict[str, object]]:
+    query = """
+        SELECT question.id, question.question, question.answer,
+               question.created_at, question.answered_at, translation.ja_text
+        FROM questions AS question
+        LEFT JOIN display_translations AS translation
+          ON translation.entity_type = 'question'
+         AND translation.entity_id = question.id
+         AND translation.source_text = question.question
+        WHERE question.status = 'answered'
+        ORDER BY question.answered_at DESC, question.id DESC
+    """
+    parameters: tuple[object, ...] = ()
+    if limit is not None:
+        query += " LIMIT ?"
+        parameters = (limit,)
     with database_session() as connection:
-        rows = connection.execute(
-            """
-            SELECT id, question, answer, created_at, answered_at
-            FROM questions
-            WHERE status = 'answered'
-            ORDER BY answered_at DESC, id DESC
-            LIMIT ?
-            """,
-            (limit,),
-        ).fetchall()
+        rows = connection.execute(query, parameters).fetchall()
 
     return [
         {
@@ -2879,6 +2885,7 @@ def list_answered_questions(limit: int = 50) -> list[dict[str, object]]:
             "answer": row[2],
             "created_at": row[3],
             "answered_at": row[4],
+            "question_ja": row[5],
         }
         for row in rows
     ]
@@ -4493,7 +4500,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/answers":
-            self._serve_json({"answers": list_answered_questions()})
+            self._serve_json({"answers": list_answered_questions(limit=None)})
             return
 
         if path == "/api/artifacts/latest":

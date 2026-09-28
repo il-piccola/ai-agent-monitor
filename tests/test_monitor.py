@@ -175,6 +175,28 @@ class AnswerStorageTests(MonitorStorageTestCase):
         answered = monitor.answer_question(question["id"], "  Yes, continue.  ")
         self.assertEqual(answered["answer"], "Yes, continue.")
 
+    def test_answer_history_can_include_all_questions_and_japanese_text(self) -> None:
+        first = monitor.ask_question("First question?")
+        monitor.set_display_translation("question", first["id"], "最初の質問ですか？")
+        monitor.answer_question(first["id"], "はい")
+        second = monitor.ask_question("Second question?")
+        monitor.answer_question(second["id"], "いいえ")
+
+        latest = monitor.list_answered_questions(limit=1)
+        self.assertEqual([item["id"] for item in latest], [second["id"]])
+        history = monitor.list_answered_questions(limit=None)
+        self.assertEqual([item["id"] for item in history], [second["id"], first["id"]])
+        self.assertEqual(history[1]["question_ja"], "最初の質問ですか？")
+        self.assertEqual(history[1]["answer"], "はい")
+
+    def test_answer_history_http_route_requests_all_records(self) -> None:
+        fake = MagicMock()
+        fake.path = "/api/answers"
+        with patch.object(monitor, "list_answered_questions", return_value=[]) as answers:
+            monitor.DashboardHandler.do_GET(fake)
+        answers.assert_called_once_with(limit=None)
+        self.assertEqual(fake._serve_json.call_args.args[0], {"answers": []})
+
     def test_empty_answer_is_rejected(self) -> None:
         question = monitor.ask_question("Continue?")
         with self.assertRaises(ValueError):

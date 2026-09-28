@@ -45,7 +45,19 @@
       border-radius: 14px;
       padding: 20px;
       background: color-mix(in srgb, Canvas 96%, CanvasText 4%);
+      box-sizing: border-box;
+      height: var(--card-height, 240px);
+      overflow-x: hidden;
+      overflow-y: auto;
+      overscroll-behavior: contain;
     }
+
+    #task-card { --card-height: 160px; }
+    #metrics-card { --card-height: 260px; }
+    #telemetry-card { --card-height: 270px; }
+    #questions-card { --card-height: 340px; }
+    #progress-card { --card-height: 240px; }
+    #artifact-card { --card-height: 180px; }
 
     .card-heading {
       display: flex;
@@ -104,43 +116,55 @@
     }
 
     .progress-list,
-    .question-list {
+    .question-list,
+    .answer-history-list {
       list-style: none;
       margin: 0;
       padding: 0;
     }
 
     .progress-list li,
-    .question-list > li {
+    .question-list > li,
+    .answer-history-list li {
       padding: 12px 0;
       border-top: 1px solid color-mix(in srgb, CanvasText 12%, transparent);
     }
 
     .progress-list li:first-child,
-    .question-list > li:first-child {
+    .question-list > li:first-child,
+    .answer-history-list li:first-child {
       padding-top: 0;
       border-top: 0;
     }
 
-    .progress-history {
+    .progress-history,
+    .answer-history {
       margin-top: 14px;
       border-top: 1px solid color-mix(in srgb, CanvasText 12%, transparent);
       padding-top: 12px;
     }
 
-    .progress-history summary {
+    .progress-history summary,
+    .answer-history summary {
       cursor: pointer;
       font-weight: 600;
     }
 
-    .progress-history .progress-list {
+    .progress-history .progress-list,
+    .answer-history .answer-history-list {
       margin-top: 14px;
     }
 
     .message,
-    .question-text {
+    .question-text,
+    .answer-text {
       display: block;
       overflow-wrap: anywhere;
+    }
+
+    .answer-text {
+      margin-top: 6px;
+      white-space: pre-wrap;
     }
 
     .timestamp {
@@ -206,10 +230,11 @@
 
     #derived-metric-grid {
       margin-top: 12px;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .metric-wide {
-      grid-column: 1 / -1;
+    @media (max-width: 620px) {
+      #derived-metric-grid { grid-template-columns: minmax(0, 1fr); }
     }
 
     .metric {
@@ -249,7 +274,7 @@
     </header>
 
     <div class="grid">
-      <section class="card">
+      <section id="task-card" class="card">
         <h2>現在のタスク</h2>
         <p id="task-empty" class="empty">実行中のタスクはありません。</p>
         <div id="task-active" hidden>
@@ -261,7 +286,7 @@
         </p>
       </section>
 
-      <section class="card">
+      <section id="metrics-card" class="card">
         <div class="card-heading">
           <h2>案件メトリクス</h2>
           <span id="metric-count" class="status">0件</span>
@@ -269,12 +294,9 @@
         <p id="metrics-empty" class="empty">メトリクスはまだ登録されていません。</p>
         <div id="metric-grid" class="metric-grid" hidden></div>
         <div id="derived-metric-grid" class="metric-grid" hidden>
-          <div id="codex-cost-card" class="metric metric-wide" hidden>
-            <span class="metric-label">CodexのAPI換算額（案件記録分）</span>
+          <div id="codex-cost-card" class="metric" hidden>
+            <span class="metric-label">Codex API換算額（参考）</span>
             <span id="codex-cost-value" class="metric-value">集計中です。</span>
-            <span id="codex-cost-detail" class="metric-updated"></span>
-            <span class="metric-updated">N100の利用記録を標準API料金で参考換算。実際の請求額ではありません。</span>
-            <a href="https://developers.openai.com/api/docs/pricing" target="_blank" rel="noopener noreferrer">API料金表</a>
           </div>
           <div id="codex-usage-card" class="metric" hidden>
             <span class="metric-label">Codex週間枠残量（アカウント共通）</span>
@@ -287,7 +309,7 @@
         </p>
       </section>
 
-      <section class="card">
+      <section id="telemetry-card" class="card">
         <div class="card-heading">
           <h2>自動計測</h2>
           <span id="telemetry-count" class="status">0件</span>
@@ -299,7 +321,25 @@
         </p>
       </section>
 
-      <section class="card">
+      <section id="questions-card" class="card">
+        <div class="card-heading">
+          <h2>質問</h2>
+          <span id="question-count" class="status">未回答 0件</span>
+        </div>
+        <p id="questions-empty" class="empty">未回答の質問はありません。</p>
+        <ul id="question-list" class="question-list" hidden></ul>
+        <details id="answer-history" class="answer-history">
+          <summary id="answer-history-summary">過去の質問と回答を表示</summary>
+          <p id="answer-history-empty" class="empty">回答履歴はありません。</p>
+          <ol id="answer-history-list" class="answer-history-list" hidden></ol>
+          <p id="answer-history-error" class="load-error" hidden>回答履歴を取得できません。自動的に再試行します。</p>
+        </details>
+        <p id="questions-error" class="load-error" hidden>
+          質問を取得できません。自動的に再試行します。
+        </p>
+      </section>
+
+      <section id="progress-card" class="card">
         <h2>最近の進捗</h2>
         <p id="progress-empty" class="empty">進捗はまだ記録されていません。</p>
         <ul id="progress-list" class="progress-list" hidden></ul>
@@ -312,7 +352,7 @@
         </p>
       </section>
 
-      <section class="card">
+      <section id="artifact-card" class="card">
         <h2>最新の成果物</h2>
         <p id="artifact-empty" class="empty">成果物はまだ登録されていません。</p>
         <div id="artifact-active" hidden>
@@ -324,17 +364,6 @@
         </p>
       </section>
 
-      <section class="card">
-        <div class="card-heading">
-          <h2>質問</h2>
-          <span id="question-count" class="status">未回答 0件</span>
-        </div>
-        <p id="questions-empty" class="empty">未回答の質問はありません。</p>
-        <ul id="question-list" class="question-list" hidden></ul>
-        <p id="questions-error" class="load-error" hidden>
-          質問を取得できません。自動的に再試行します。
-        </p>
-      </section>
     </div>
   </main>
 
@@ -353,7 +382,6 @@
     const metricsError = document.querySelector("#metrics-error");
     const codexCostCard = document.querySelector("#codex-cost-card");
     const codexCostValue = document.querySelector("#codex-cost-value");
-    const codexCostDetail = document.querySelector("#codex-cost-detail");
     let codexCostEnabled = null;
     let codexCostHasValue = false;
     let codexCostSignature = null;
@@ -394,6 +422,25 @@
     const questionsEmpty = document.querySelector("#questions-empty");
     const questionList = document.querySelector("#question-list");
     const questionsError = document.querySelector("#questions-error");
+    const answerHistory = document.querySelector("#answer-history");
+    const answerHistorySummary = document.querySelector("#answer-history-summary");
+    const answerHistoryEmpty = document.querySelector("#answer-history-empty");
+    const answerHistoryList = document.querySelector("#answer-history-list");
+    const answerHistoryError = document.querySelector("#answer-history-error");
+    let answerHistorySignature = null;
+    let answerHistoryLoading = false;
+    let answerHistoryLastFetch = 0;
+
+    function updateAnswerHistorySummary() {
+      const count = answerHistory.dataset.count;
+      const action = answerHistory.open ? "回答履歴を閉じる" : "過去の質問と回答を表示";
+      answerHistorySummary.textContent = count === undefined ? action : `${action}（${count}件）`;
+    }
+
+    answerHistory.addEventListener("toggle", () => {
+      updateAnswerHistorySummary();
+      if (answerHistory.open) refreshAnswerHistory(true);
+    });
 
     function formatTimestamp(value) {
       const date = new Date(value);
@@ -653,6 +700,7 @@
             document.activeElement.blur();
           }
           await refreshQuestions(true);
+          if (answerHistory.open) await refreshAnswerHistory(true);
         } catch (error) {
           input.disabled = false;
           button.disabled = false;
@@ -683,6 +731,34 @@
 
       questionsEmpty.hidden = true;
       questionList.hidden = false;
+    }
+
+    function renderAnswerHistory(items) {
+      const signature = JSON.stringify(items);
+      if (signature === answerHistorySignature) return;
+      answerHistorySignature = signature;
+      answerHistoryList.replaceChildren();
+      answerHistory.dataset.count = String(items.length);
+      updateAnswerHistorySummary();
+
+      for (const item of items) {
+        const row = document.createElement("li");
+        const question = document.createElement("span");
+        const answer = document.createElement("span");
+        const timestamp = document.createElement("time");
+        question.className = "question-text";
+        question.textContent = `質問: ${item.question_ja || item.question}`;
+        answer.className = "answer-text";
+        answer.textContent = `回答: ${item.answer}`;
+        timestamp.className = "timestamp";
+        timestamp.dateTime = item.answered_at;
+        timestamp.textContent = `回答日時: ${formatTimestamp(item.answered_at)}`;
+        row.append(question, answer, timestamp);
+        answerHistoryList.append(row);
+      }
+
+      answerHistoryEmpty.hidden = items.length > 0;
+      answerHistoryList.hidden = items.length === 0;
     }
 
     async function refreshTask() {
@@ -741,28 +817,16 @@
             || typeof data.amount_usd !== "string") {
           return;
         }
-        const signature = JSON.stringify([
-          data.amount_usd, data.priced_responses, data.excluded_responses,
-          data.first_recorded_at, data.last_recorded_at, data.pricing_as_of,
-        ]);
-        if (codexCostHasValue && codexCostSignature === signature) return;
+        const displayAmount = data.priced_responses
+          ? `${data.amount_usd} USD` : "利用記録なし";
+        if (codexCostHasValue && codexCostSignature === displayAmount) return;
         if (codexCostCard.hidden) {
           codexCostCard.hidden = false;
           updateMetricCount();
         }
-        if (!data.priced_responses) {
-          setTextIfChanged(codexCostValue, "換算できるCodex利用記録はありません。");
-        } else {
-          setTextIfChanged(codexCostValue, `${data.amount_usd} USD`);
-        }
+        setTextIfChanged(codexCostValue, displayAmount);
         codexCostHasValue = true;
-        codexCostSignature = signature;
-        const period = data.first_recorded_at && data.last_recorded_at
-          ? `対象期間: ${formatTimestamp(data.first_recorded_at)}〜${formatTimestamp(data.last_recorded_at)}`
-          : "対象期間: 記録なし";
-        const excluded = data.excluded_responses
-          ? `・公開単価のない処理 ${data.excluded_responses}件を除外` : "";
-        setTextIfChanged(codexCostDetail, `${period}・換算 ${data.priced_responses}件${excluded}・料金基準 ${data.pricing_as_of}・集計 ${formatTimestamp(data.calculated_at)}`);
+        codexCostSignature = displayAmount;
       } catch (error) {
         // A transient request failure must not replace the last successful estimate.
       }
@@ -871,6 +935,24 @@
       }
     }
 
+    async function refreshAnswerHistory(force = false) {
+      if (!answerHistory.open || answerHistoryLoading) return;
+      if (!force && Date.now() - answerHistoryLastFetch < 15000) return;
+      answerHistoryLoading = true;
+      try {
+        const response = await fetch("/api/answers", { cache: "no-store" });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        renderAnswerHistory(Array.isArray(payload.answers) ? payload.answers : []);
+        answerHistoryLastFetch = Date.now();
+        answerHistoryError.hidden = true;
+      } catch (error) {
+        answerHistoryError.hidden = false;
+      } finally {
+        answerHistoryLoading = false;
+      }
+    }
+
     function refreshDashboard() {
       refreshTask();
       refreshMetrics();
@@ -880,6 +962,7 @@
       refreshProgress();
       refreshArtifact();
       refreshQuestions();
+      refreshAnswerHistory();
     }
 
     refreshDashboard();
