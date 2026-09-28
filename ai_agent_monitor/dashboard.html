@@ -348,6 +348,7 @@
     const metricCount = document.querySelector("#metric-count");
     const metricsEmpty = document.querySelector("#metrics-empty");
     const metricGrid = document.querySelector("#metric-grid");
+    const manualMetricCards = new Map();
     const derivedMetricGrid = document.querySelector("#derived-metric-grid");
     const metricsError = document.querySelector("#metrics-error");
     const codexCostCard = document.querySelector("#codex-cost-card");
@@ -355,11 +356,13 @@
     const codexCostDetail = document.querySelector("#codex-cost-detail");
     let codexCostEnabled = null;
     let codexCostHasValue = false;
+    let codexCostSignature = null;
     const codexUsageCard = document.querySelector("#codex-usage-card");
     const codexUsageValue = document.querySelector("#codex-usage-value");
     const codexUsageDetail = document.querySelector("#codex-usage-detail");
     let codexUsageEnabled = null;
     let codexUsageHasValue = false;
+    let codexUsageSignature = null;
 
     const telemetryCount = document.querySelector("#telemetry-count");
     const telemetryEmpty = document.querySelector("#telemetry-empty");
@@ -417,37 +420,54 @@
       taskActive.hidden = false;
     }
 
+    function setTextIfChanged(element, value) {
+      if (element.textContent !== value) element.textContent = value;
+    }
+
     function updateMetricCount() {
       const manual = metricGrid.children.length;
       const derived = Number(!codexCostCard.hidden) + Number(!codexUsageCard.hidden);
-      metricCount.textContent = `${manual + derived}件`;
-      metricsEmpty.hidden = manual + derived > 0;
-      metricGrid.hidden = manual === 0;
-      derivedMetricGrid.hidden = derived === 0;
+      setTextIfChanged(metricCount, `${manual + derived}件`);
+      if (metricsEmpty.hidden !== (manual + derived > 0)) metricsEmpty.hidden = manual + derived > 0;
+      if (metricGrid.hidden !== (manual === 0)) metricGrid.hidden = manual === 0;
+      if (derivedMetricGrid.hidden !== (derived === 0)) derivedMetricGrid.hidden = derived === 0;
     }
 
     function renderMetrics(items) {
-      metricGrid.replaceChildren();
-      for (const item of items) {
-        const card = document.createElement("div");
-        const label = document.createElement("span");
-        const value = document.createElement("span");
-        const updated = document.createElement("time");
+      const keys = new Set();
+      items.forEach((item, index) => {
+        keys.add(item.key);
+        let refs = manualMetricCards.get(item.key);
+        if (!refs) {
+          const card = document.createElement("div");
+          const label = document.createElement("span");
+          const value = document.createElement("span");
+          const updated = document.createElement("time");
+          card.className = "metric";
+          label.className = "metric-label";
+          value.className = "metric-value";
+          updated.className = "metric-updated";
+          card.append(label, value, updated);
+          refs = { card, label, value, updated, signature: null };
+          manualMetricCards.set(item.key, refs);
+        }
 
-        card.className = "metric";
+        const signature = JSON.stringify([item.label, item.value, item.unit]);
+        if (refs.signature !== signature) {
+          setTextIfChanged(refs.label, item.label);
+          setTextIfChanged(refs.value, item.unit ? `${item.value} ${item.unit}` : item.value);
+          refs.updated.dateTime = item.updated_at;
+          setTextIfChanged(refs.updated, formatTimestamp(item.updated_at));
+          refs.signature = signature;
+        }
+        const current = metricGrid.children[index];
+        if (current !== refs.card) metricGrid.insertBefore(refs.card, current || null);
+      });
 
-        label.className = "metric-label";
-        label.textContent = item.label;
-
-        value.className = "metric-value";
-        value.textContent = item.unit ? `${item.value} ${item.unit}` : item.value;
-
-        updated.className = "metric-updated";
-        updated.dateTime = item.updated_at;
-        updated.textContent = formatTimestamp(item.updated_at);
-
-        card.append(label, value, updated);
-        metricGrid.append(card);
+      for (const [key, refs] of manualMetricCards) {
+        if (keys.has(key)) continue;
+        refs.card.remove();
+        manualMetricCards.delete(key);
       }
 
       updateMetricCount();
@@ -711,7 +731,7 @@
         if (data.state === "calculating") {
           if (!codexCostHasValue) {
             codexCostCard.hidden = false;
-            codexCostValue.textContent = "集計中です。画面を開いたままお待ちください。";
+            setTextIfChanged(codexCostValue, "集計中です。画面を開いたままお待ちください。");
             updateMetricCount();
           }
           return;
@@ -721,20 +741,28 @@
             || typeof data.amount_usd !== "string") {
           return;
         }
-        codexCostCard.hidden = false;
-        updateMetricCount();
+        const signature = JSON.stringify([
+          data.amount_usd, data.priced_responses, data.excluded_responses,
+          data.first_recorded_at, data.last_recorded_at, data.pricing_as_of,
+        ]);
+        if (codexCostHasValue && codexCostSignature === signature) return;
+        if (codexCostCard.hidden) {
+          codexCostCard.hidden = false;
+          updateMetricCount();
+        }
         if (!data.priced_responses) {
-          codexCostValue.textContent = "換算できるCodex利用記録はありません。";
+          setTextIfChanged(codexCostValue, "換算できるCodex利用記録はありません。");
         } else {
-          codexCostValue.textContent = `${data.amount_usd} USD`;
+          setTextIfChanged(codexCostValue, `${data.amount_usd} USD`);
         }
         codexCostHasValue = true;
+        codexCostSignature = signature;
         const period = data.first_recorded_at && data.last_recorded_at
           ? `対象期間: ${formatTimestamp(data.first_recorded_at)}〜${formatTimestamp(data.last_recorded_at)}`
           : "対象期間: 記録なし";
         const excluded = data.excluded_responses
           ? `・公開単価のない処理 ${data.excluded_responses}件を除外` : "";
-        codexCostDetail.textContent = `${period}・換算 ${data.priced_responses}件${excluded}・料金基準 ${data.pricing_as_of}・集計 ${formatTimestamp(data.calculated_at)}`;
+        setTextIfChanged(codexCostDetail, `${period}・換算 ${data.priced_responses}件${excluded}・料金基準 ${data.pricing_as_of}・集計 ${formatTimestamp(data.calculated_at)}`);
       } catch (error) {
         // A transient request failure must not replace the last successful estimate.
       }
@@ -766,12 +794,17 @@
             || !Number.isFinite(data.remaining_percent)) {
           return;
         }
-        codexUsageCard.hidden = false;
-        updateMetricCount();
-        codexUsageValue.textContent = `${data.remaining_percent.toLocaleString("ja-JP", { maximumFractionDigits: 1 })} %`;
+        const signature = JSON.stringify([data.remaining_percent, data.resets_at]);
+        if (codexUsageHasValue && codexUsageSignature === signature) return;
+        if (codexUsageCard.hidden) {
+          codexUsageCard.hidden = false;
+          updateMetricCount();
+        }
+        setTextIfChanged(codexUsageValue, `${data.remaining_percent.toLocaleString("ja-JP", { maximumFractionDigits: 1 })} %`);
         codexUsageHasValue = true;
+        codexUsageSignature = signature;
         const reset = data.resets_at ? `枠のリセット: ${formatTimestamp(data.resets_at)}・` : "";
-        codexUsageDetail.textContent = `アカウント共通・${reset}取得: ${formatTimestamp(data.observed_at)}`;
+        setTextIfChanged(codexUsageDetail, `アカウント共通・${reset}取得: ${formatTimestamp(data.observed_at)}`);
       } catch (error) {
         // A transient request failure must not replace the last successful value.
       }

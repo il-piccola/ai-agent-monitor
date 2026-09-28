@@ -6,7 +6,7 @@
 - Visibility: public
 - Default branch: `main`
 - Formal release: `v1.0.0` published
-- Development package version: `1.6.5`
+- Development package version: `1.6.6`
 - Completed phases: 1 through 18
 - Current work: Phase 20 two-way Telegram answers; Phase 19 remains deferred at the human's request
 
@@ -134,3 +134,5 @@ Version 1.6.3 puts the dynamic API-equivalent estimate inside the existing proje
 Version 1.6.4 keeps the last successful weekly-quota percentage and observation time unchanged when a dashboard request fails or Codex omits the weekly window. The server also retains its last successful value for page reloads. A later valid read updates the card normally. The N100 suite passed 171 tests and the dashboard JavaScript syntax check passed. The installed CLI restarted `nashiri-core` on the same 8766/9444 ports; its tailnet API returned a 42% weekly remainder and a browser render showed 42% under **案件メトリクス**. No new Serve entry or listening port was created. Phase 19 remains deferred.
 
 Version 1.6.5 applies the same last-successful-display behavior to the Codex API-equivalent cost estimate. A transient dashboard request failure or calculation error does not replace the displayed amount, covered period, or calculation time; a successful later result updates them. The backend already retained its last successful calculation, and a regression test now covers that behavior. All 172 N100 tests and the dashboard JavaScript syntax check passed. The installed CLI restarted `nashiri-core` on the same 8766/9444 ports, where the tailnet API and browser displayed 130.42 USD after the initial scan. No new port was created. Phase 19 remains deferred.
+
+Version 1.6.6 reuses manual project-metric cards and skips writes when their key, label, value, and unit are unchanged. The Codex cost and weekly-quota cards also ignore background calculation/observation timestamps when their meaningful values have not changed. The full N100 suite still passes 172 tests and the dashboard JavaScript syntax check passes. The installed CLI restarted `nashiri-core` on its existing 8766/9444 ports. In the browser, 131.62 USD and 38% stayed displayed with their original timestamps while the API reported later calculation/observation times for the same values. Both cards remained inside **案件メトリクス**. The four local/tailnet Monitor URLs returned HTTP 200, existing Serve mappings were preserved, and no new port was created. Phase 19 remains deferred.

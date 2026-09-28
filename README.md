@@ -42,6 +42,8 @@ Version 1.6.4 keeps the last successfully displayed weekly quota and observation
 
 Version 1.6.5 applies the same display rule to the Codex API-equivalent cost estimate: a failed dashboard request leaves the last amount, covered period, and calculation time unchanged. A successful later calculation updates them.
 
+Version 1.6.6 reuses project-metric cards on each dashboard poll. An unchanged value, label, and unit leave a manual card untouched, even if its stored update time changes. The Codex cost card changes only when its amount or covered-record data changes; the weekly-quota card changes only when its percentage or reset time changes. Repeated background checks alone do not repaint the cards.
+
 The dashboard supports progress updates, a current task, unanswered questions, browser-submitted answers, registered artifact snapshots, and project-specific metrics. The installed CLI keeps each project's data and optional dashboard separate. The data is stored locally and the dashboard refreshes automatically.
 
 ## Run the dashboard
