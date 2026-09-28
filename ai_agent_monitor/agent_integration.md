@@ -165,7 +165,7 @@ The monitor currently supports durable Telegram notifications, optional email, a
 The monitor does not currently:
 
 - automatically resume an unregistered or generic agent
-- calculate LLM cost automatically
+- calculate the actual billed LLM cost (the optional Codex API-equivalent estimate is only a reference value)
 - orchestrate multiple agents
 
 Do not emulate those missing features by writing directly to the monitor database.
