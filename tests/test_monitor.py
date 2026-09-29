@@ -1121,6 +1121,10 @@ class AgentOnboardingTests(MonitorStorageTestCase):
 class NotificationOutboxTests(MonitorStorageTestCase):
     def setUp(self) -> None:
         super().setUp()
+        self.shared_inbox_patch = patch.object(
+            monitor.telegram_inbox, "BASE_DIR", self.root / "shared-telegram"
+        )
+        self.shared_inbox_patch.start()
         self.project_root_patch = patch.object(monitor, "PROJECT_ROOT", self.root)
         self.project_root_patch.start()
         self.notification_env_patch = patch.dict(
@@ -1134,6 +1138,7 @@ class NotificationOutboxTests(MonitorStorageTestCase):
     def tearDown(self) -> None:
         self.notification_env_patch.stop()
         self.project_root_patch.stop()
+        self.shared_inbox_patch.stop()
         super().tearDown()
 
     def test_question_creation_enqueues_one_durable_notification(self) -> None:
@@ -1738,10 +1743,100 @@ class NotificationOutboxTests(MonitorStorageTestCase):
         ):
             first = monitor.poll_telegram_replies_once()
             second = monitor.poll_telegram_replies_once()
-        self.assertEqual(first, {"updates": 1, "answers": 0})
+        self.assertEqual(first, {"updates": 0, "answers": 0})
         self.assertEqual(second, {"updates": 0, "answers": 0})
         self.assertEqual(request.call_args_list[1].args[1]["offset"], 43)
-        answer.assert_called_once()
+        answer.assert_not_called()
+
+    def test_shared_bot_delivers_replies_to_two_separate_projects(self) -> None:
+        projects = [self.root / "project-a", self.root / "project-b"]
+
+        def select_project(root: Path):
+            return patch.multiple(
+                monitor,
+                PROJECT_ROOT=root,
+                DATA_DIR=root / ".agent-monitor",
+                DB_PATH=root / ".agent-monitor" / "monitor.db",
+            )
+
+        for root, message_id in zip(projects, (77, 78)):
+            root.mkdir()
+            with select_project(root):
+                monitor.configure_telegram("123456")
+                monitor.set_notification_channel_enabled("telegram", True)
+                monitor.set_telegram_replies_enabled(True)
+                monitor.ask_question(f"Question from {root.name}?")
+                with patch.object(monitor, "_send_telegram_notification", return_value=message_id):
+                    monitor.dispatch_pending_notifications(force=True)
+
+        updates = [
+            {
+                "update_id": 51 + index,
+                "message": {
+                    "chat": {"id": 123456, "type": "private"},
+                    "from": {"id": 123456, "is_bot": False},
+                    "text": answer,
+                    "reply_to_message": {"message_id": message_id},
+                },
+            }
+            for index, (message_id, answer) in enumerate(((77, "ALPHA"), (78, "BETA")))
+        ]
+        requests = []
+
+        def bot_api(method, payload, **kwargs):
+            if method == "getUpdates":
+                requests.append(payload["offset"])
+                return updates if len(requests) == 1 else []
+            return {}
+
+        with patch.object(monitor, "_telegram_api_request", side_effect=bot_api):
+            with select_project(projects[0]):
+                self.assertEqual(monitor.poll_telegram_replies_once(), {"updates": 2, "answers": 1})
+                self.assertEqual(monitor.list_answered_questions()[0]["answer"], "ALPHA")
+            # Project B was not polling while A received both updates. Its
+            # answer must still be present when it comes online later.
+            with select_project(projects[1]):
+                self.assertEqual(monitor.poll_telegram_replies_once(), {"updates": 2, "answers": 1})
+                self.assertEqual(monitor.list_answered_questions()[0]["answer"], "BETA")
+            with select_project(projects[0]):
+                self.assertEqual(monitor.poll_telegram_replies_once(), {"updates": 0, "answers": 0})
+        self.assertEqual(requests, [0, 53, 53])
+        self.assertEqual(
+            monitor.telegram_inbox.SharedTelegramInbox("test-token").pending(
+                hashlib.sha256(str(projects[0]).encode()).hexdigest()[:16]
+            ),
+            [],
+        )
+
+    def test_shared_bot_poll_lease_serializes_projects(self) -> None:
+        inbox_a = monitor.telegram_inbox.SharedTelegramInbox("test-token")
+        inbox_b = monitor.telegram_inbox.SharedTelegramInbox("test-token")
+        first = inbox_a.claim_poll()
+        self.assertIsNotNone(first)
+        self.assertIsNone(inbox_b.claim_poll())
+        inbox_a.release_poll(first[0])
+        self.assertIsNotNone(inbox_b.claim_poll())
+
+    def test_shared_bot_recovers_poll_lease_after_network_error(self) -> None:
+        monitor.set_telegram_replies_enabled(True)
+        with patch.object(
+            monitor, "_telegram_api_request", side_effect=RuntimeError("offline")
+        ):
+            with self.assertRaisesRegex(RuntimeError, "offline"):
+                monitor.poll_telegram_replies_once()
+        inbox = monitor.telegram_inbox.SharedTelegramInbox("test-token")
+        self.assertIsNotNone(inbox.claim_poll())
+
+    def test_shared_bot_new_consumer_starts_after_existing_updates(self) -> None:
+        inbox = monitor.telegram_inbox.SharedTelegramInbox("test-token")
+        inbox.register("existing", start_at_current=False, legacy_offset=0)
+        claim, _ = inbox.claim_poll()
+        inbox.save_poll(claim, [{"update_id": 12, "message": {
+            "text": "old", "reply_to_message": {"message_id": 1}
+        }}])
+        inbox.register("new", start_at_current=True)
+        self.assertEqual(len(inbox.pending("existing")), 1)
+        self.assertEqual(inbox.pending("new"), [])
 
     def test_telegram_notification_requests_reply_and_records_message_id(self) -> None:
         monitor.set_telegram_replies_enabled(True)

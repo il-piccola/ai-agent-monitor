@@ -615,7 +615,9 @@ To accept answers by replying to a bot's question notification in the configured
 monitor notify telegram replies on
 ```
 
-The bot presents a reply field. The monitor checks the private chat and the exact notification message, then stores the reply using the same question/answer database flow as the dashboard. An answered question cannot be answered twice. The server polls Telegram over outbound HTTPS; no webhook or new Serve port is needed. To pause inbound replies without turning off notifications, use `monitor notify telegram replies off`. `monitor notify telegram replies poll` checks once when no server is running for that project. Use only one polling project per bot token.
+The bot presents a reply field. The monitor checks the private chat and the exact notification message, then stores the reply using the same question/answer database flow as the dashboard. An answered question cannot be answered twice. The server polls Telegram over outbound HTTPS; no webhook or new Serve port is needed. To pause inbound replies without turning off notifications, use `monitor notify telegram replies off`. `monitor notify telegram replies poll` checks once when no server is running for that project.
+
+Multiple projects under the same OS user may enable replies with the same bot token. A bot-wide SQLite inbox under the user's application-data directory serializes `getUpdates` and stores each update until every enabled project has checked it. Each project still verifies its own configured private chat and exact delivered message ID, and stores the answer only in its own `.agent-monitor/monitor.db`. The shared inbox file is outside all project repositories and contains no bot token; its filename is derived from a token hash. Restart older Monitor servers after upgrading so they do not poll the bot using the former project-local cursor.
 
 ### Optional email
 

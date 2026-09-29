@@ -36,6 +36,7 @@ from . import codex_cost
 from . import codex_usage
 from . import registry as project_registry
 from . import telemetry as project_telemetry
+from . import telegram_inbox
 
 HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
@@ -1069,10 +1070,15 @@ def set_notification_channel_enabled(channel: str, enabled: bool) -> dict[str, o
                     f"Set {SMTP_PASSWORD_ENV} before enabling authenticated email."
                 )
 
+    was_receiving_replies = channel == "telegram" and settings.get("replies_enabled") is True
     settings["enabled"] = enabled
     if channel == "telegram" and not enabled:
         settings["replies_enabled"] = False
     write_notification_config(config)
+    if was_receiving_replies and not enabled:
+        token = os.environ.get(TELEGRAM_TOKEN_ENV)
+        if token:
+            telegram_inbox.SharedTelegramInbox(token).unregister(project_id())
 
     if not enabled and DB_PATH.is_file():
         cancelled_at = utc_now()
@@ -1105,16 +1111,29 @@ def set_notification_channel_enabled(channel: str, enabled: bool) -> dict[str, o
 def set_telegram_replies_enabled(enabled: bool) -> dict[str, object]:
     config = read_notification_config()
     telegram = config["telegram"]
+    previously_enabled = telegram.get("replies_enabled") is True
+    token = os.environ.get(TELEGRAM_TOKEN_ENV)
     if enabled:
         if telegram.get("enabled") is not True or not telegram.get("chat_id"):
             raise RuntimeError("Enable Telegram notifications and configure a chat first.")
-        if not os.environ.get(TELEGRAM_TOKEN_ENV):
+        if not token:
             raise RuntimeError(f"Set {TELEGRAM_TOKEN_ENV} before enabling replies.")
-        # Create the durable cursor before the server starts consuming updates.
+        # The former project-local cursor is retained for migration to the
+        # bot-wide inbox when an already-enabled project upgrades.
         with database_session() as connection:
             connection.execute(
                 "INSERT OR IGNORE INTO telegram_inbox_cursor (id, next_offset) VALUES (1, 0)"
             )
+            legacy_offset = int(connection.execute(
+                "SELECT next_offset FROM telegram_inbox_cursor WHERE id = 1"
+            ).fetchone()[0])
+        telegram_inbox.SharedTelegramInbox(token).register(
+            project_id(),
+            start_at_current=not previously_enabled,
+            legacy_offset=legacy_offset,
+        )
+    elif token:
+        telegram_inbox.SharedTelegramInbox(token).unregister(project_id())
     telegram["replies_enabled"] = enabled
     write_notification_config(config)
     return telegram
@@ -1732,42 +1751,60 @@ def poll_telegram_replies_once() -> dict[str, int]:
     chat_id = telegram.get("chat_id")
     if not isinstance(chat_id, str) or not chat_id:
         raise RuntimeError("Telegram chat ID is not configured.")
+    token = os.environ.get(TELEGRAM_TOKEN_ENV)
+    if not token:
+        raise RuntimeError(f"{TELEGRAM_TOKEN_ENV} is not set.")
+    inbox = telegram_inbox.SharedTelegramInbox(token)
     with database_session() as connection:
         connection.execute(
             "INSERT OR IGNORE INTO telegram_inbox_cursor (id, next_offset) VALUES (1, 0)"
         )
-        next_offset = int(connection.execute(
+        legacy_offset = int(connection.execute(
             "SELECT next_offset FROM telegram_inbox_cursor WHERE id = 1"
         ).fetchone()[0])
-    updates = _telegram_api_request(
-        "getUpdates",
-        {
-            "offset": next_offset,
-            "limit": 100,
-            "timeout": 3,
-            "allowed_updates": ["message"],
-        },
-        timeout=8,
-    )
-    if not isinstance(updates, list):
-        raise RuntimeError("Telegram getUpdates returned unexpected data.")
+    inbox.register(project_id(), start_at_current=False, legacy_offset=legacy_offset)
     processed = 0
     answered = 0
-    for update in updates:
-        if not isinstance(update, dict):
-            continue
-        update_id = update.get("update_id")
-        if not isinstance(update_id, int) or update_id < next_offset:
-            continue
-        if _telegram_answer_from_update(update, chat_id):
-            answered += 1
-        next_offset = update_id + 1
-        with database_session() as connection:
-            connection.execute(
-                "UPDATE telegram_inbox_cursor SET next_offset = ? WHERE id = 1",
-                (next_offset,),
+
+    def process_saved() -> None:
+        nonlocal processed, answered
+        for update in inbox.pending(project_id()):
+            update_id = update.get("update_id")
+            if isinstance(update_id, bool) or not isinstance(update_id, int):
+                continue
+            if _telegram_answer_from_update(update, chat_id):
+                answered += 1
+            inbox.advance(project_id(), update_id + 1)
+            with database_session() as connection:
+                connection.execute(
+                    "UPDATE telegram_inbox_cursor "
+                    "SET next_offset = MAX(next_offset, ?) WHERE id = 1",
+                    (update_id + 1,),
+                )
+            processed += 1
+
+    # A saved reply can be answered even while a new Telegram request fails.
+    process_saved()
+    claim = inbox.claim_poll()
+    if claim is not None:
+        claim_id, next_offset = claim
+        try:
+            updates = _telegram_api_request(
+                "getUpdates",
+                {
+                    "offset": next_offset,
+                    "limit": 100,
+                    "timeout": 3,
+                    "allowed_updates": ["message"],
+                },
+                timeout=8,
             )
-        processed += 1
+            if not isinstance(updates, list):
+                raise RuntimeError("Telegram getUpdates returned unexpected data.")
+            inbox.save_poll(claim_id, updates)
+        finally:
+            inbox.release_poll(claim_id)
+    process_saved()
     return {"updates": processed, "answers": answered}
 
 
