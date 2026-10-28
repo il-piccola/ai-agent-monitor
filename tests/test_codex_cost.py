@@ -31,7 +31,10 @@ class CodexCostTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        base = Path(self.temp.name)
+        # Windows runners may expose TEMP through an 8.3 alias (RUNNER~1).
+        # Match the resolved project path used by the application before
+        # recording the synthetic Codex cwd in these session fixtures.
+        base = Path(self.temp.name).resolve()
         self.root = base / "project-a"
         self.root.mkdir()
         self.sessions = base / "sessions"
