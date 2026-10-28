@@ -2,6 +2,10 @@
 
 ## Core idea
 
+### Remote endpoint recovery (1.6.13)
+
+Remote process state and endpoint identity have different lifetimes. `runtime/remote.json` records the running process; an explicit stop preserves project ownership and the backend/HTTPS ports in `runtime/remote-endpoint.json`. A crashed process leaves its state intact for recovery. Startup reuses the saved endpoint after checking ownership, route identity, and port availability. Conflicts fail without reallocating ports or removing saved state. A healthy identified backend is reused rather than duplicated. Recovery failures do not delete a Serve mapping that existed before recovery began.
+
 The monitor is a reusable tool that other projects call.
 
 Other projects should not need to copy this repository or read its source code during normal use.

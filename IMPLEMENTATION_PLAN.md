@@ -353,11 +353,13 @@ Prefer adapter/instruction changes over monitor-core changes.
 
 Success condition: the same monitor core supports the second agent without vendor-specific state leaking into the core model.
 
-## Phase 20: Answer questions in Telegram (in progress)
+## Phase 20: Answer questions in Telegram (verified on N100 and Telegram)
 
 Extend the existing Telegram question notification so the human can reply to that message in a configured private chat. Save the sent Telegram message ID and chat ID with the notification delivery. The server polls Telegram updates without opening a new inbound port, checks the configured private chat and exact notification message, and submits the reply through the same durable `answer_question` transaction as the dashboard. Keep an update cursor so a restart or repeated update does not create another answer. Version 1.6.12 shares one durable inbox and poll lease per bot token so several projects can receive replies without consuming one another's updates. Enable receiving replies separately from outbound notifications, and leave email behavior unchanged.
 
 Success condition: a new question reaches Telegram, a reply in the configured private chat is stored as the answer, the question disappears from the dashboard, and duplicate or unrelated messages cannot answer another question. Verify on the N100 without changing existing Serve ports. Phase 19 remains deferred.
+
+完了記録: 1.6.0でiPhoneのTelegram返信が質問への回答として保存されることを確認。1.6.12で共通Botを使う複数案件の受信を実装し、sleep-improvement-appへの実返信がその案件だけに保存され、他案件も同じ更新を消費済みにできることを確認した。重複・無関係な返信の拒否と案件分離は回帰テストで確認済み。2026-10-29に、既存の検証記録に合わせて計画書の状態を更新した。今回新たな通知は送信していない。
 
 ## Explicitly out of scope for the first MVP
 

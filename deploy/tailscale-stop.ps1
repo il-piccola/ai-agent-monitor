@@ -1,6 +1,10 @@
 $ErrorActionPreference = 'Stop'
 
 $root = Split-Path $PSScriptRoot -Parent
+if ((Test-Path (Join-Path $root '.agent-monitor/runtime/remote.json')) -or
+    (Test-Path (Join-Path $root '.agent-monitor/runtime/remote-endpoint.json'))) {
+    throw 'この案件は共通CLIの管理へ移行済みです。案件フォルダで monitor remote stop を実行してください。'
+}
 $runtime = Join-Path $root '.runtime'
 $portsFile = Join-Path $runtime 'ports.env'
 $pidFile = Join-Path $runtime 'monitor.pid'

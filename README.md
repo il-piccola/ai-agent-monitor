@@ -12,6 +12,8 @@ See `RELEASE_NOTES_v1.0.0.md` for capabilities and known limits.
 
 ## Current status
 
+Version 1.6.13 keeps each project's backend and HTTPS ports across process restarts and explicit stop/start. A conflicting port causes an error instead of a new URL. Running `remote start` against an identified healthy backend does not start another process. The existing source-checkout deployment can be adopted by `remote start` after its live project identity and Serve mapping are verified. The N100 suite passes 188 tests.
+
 Phases 1 through 10 are verified on the N100. This includes Phase 9 tailnet-only smartphone access and Phase 10 per-user Windows logon startup for a test project.
 
 Phases 11 through 13 are verified on the N100. Version 1.0.0 passed the real Codex workflow gate, including an iPhone human answer recovered by a later independent Codex run without the original chat transcript.
@@ -446,6 +448,8 @@ Stop only the current project's remote endpoint with:
 ```bash
 monitor remote stop
 ```
+
+The selected ports are retained in `.agent-monitor/runtime/remote-endpoint.json` after stopping. A later start reuses them. If a saved port is occupied by another service, resolve that conflict before restarting; the monitor will not silently move to another URL. Do not delete saved runtime state to work around an ownership error.
 
 Before changing a Tailscale Serve entry or terminating a saved PID, the monitor checks that the state still belongs to the current project and that the Serve proxy still points to the expected backend. A reused or unverified live PID is not terminated.
 

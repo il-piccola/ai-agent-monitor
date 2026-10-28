@@ -3361,7 +3361,7 @@ def _find_free_tailscale_port(status: dict[str, object]) -> int:
 def _project_server_matches(url: str, expected_project_id: str) -> bool:
     endpoint = f"{url}/api/project"
     try:
-        with urllib.request.urlopen(endpoint, timeout=1) as response:
+        with urllib.request.urlopen(endpoint, timeout=5) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except (
         OSError,
@@ -3429,9 +3429,10 @@ def _process_is_alive(pid: int) -> bool:
             ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
             capture_output=True,
             text=True,
+            errors="replace",
             check=False,
         )
-        return str(pid) in result.stdout
+        return f'","{pid}",' in result.stdout
 
     try:
         import os
@@ -3491,9 +3492,42 @@ def remote_start() -> dict[str, object]:
     init_project(False)
 
     existing = read_remote_state()
+    # Import the source checkout's legacy helper only after checking its route
+    # and the identity of the live backend. No guessed PID or port is adopted.
+    legacy = PROJECT_ROOT / ".runtime" / "ports.env"
+    if (existing is None and legacy.is_file() and (PROJECT_ROOT / "monitor.py").is_file()
+            and not (remote_runtime_dir() / "remote-endpoint.json").is_file()):
+        values = dict(re.findall(r"^([A-Z_]+)=(\d+)$", legacy.read_text().strip(), re.MULTILINE))
+        if all(key in values for key in ("BACKEND_PORT", "TAILSCALE_HTTPS_PORT", "MONITOR_PID")):
+            port = int(values["BACKEND_PORT"])
+            https = int(values["TAILSCALE_HTTPS_PORT"])
+            url = f"http://{HOST}:{port}"
+            host = _tailscale_dns_name()
+            if (_serve_handler_proxy(_tailscale_status_json(), host, https) == url
+                    and _project_server_matches(url, project_id())
+                    and _process_is_alive(int(values["MONITOR_PID"]))):
+                existing = dict(project_root=str(PROJECT_ROOT), backend_port=port,
+                                https_port=https, pid=int(values["MONITOR_PID"]),
+                                backend_url=url, tailnet_url=f"https://{host}:{https}/",
+                                started_at=utc_now())
+                _write_remote_state(existing)
+            else:
+                raise RuntimeError("Legacy deployment could not be verified; restore it with its deployment helper first.")
     if existing is not None:
+        if existing.get("project_root") != str(PROJECT_ROOT):
+            raise RuntimeError("Remote state belongs to a different project.")
         pid = existing.get("pid")
         backend_url = existing.get("backend_url")
+        if isinstance(backend_url, str) and _project_server_matches(backend_url, project_id()):
+            current = remote_status()
+            if not current["tailscale_active"]:
+                status = _tailscale_status_json()
+                https = existing.get("https_port")
+                if not isinstance(https, int) or https in _tailscale_used_ports(status):
+                    raise RuntimeError("Saved HTTPS port is in use; refusing to overwrite it.")
+                _tailscale_command("serve", "--bg", "--yes", f"--https={https}", backend_url)
+                current = remote_status()
+            return current
         if isinstance(pid, int) and _process_is_alive(pid):
             if isinstance(backend_url, str) and _project_server_matches(
                 backend_url,
@@ -3505,12 +3539,15 @@ def remote_start() -> dict[str, object]:
             raise RuntimeError(
                 "Remote state points to a live process that cannot be verified; refusing to overwrite it."
             )
-        remote_state_path().unlink(missing_ok=True)
 
     status = _tailscale_status_json()
-    backend_port = _find_free_backend_port(status)
-    https_port = _find_free_tailscale_port(status)
+    endpoint_path = remote_runtime_dir() / "remote-endpoint.json"
+    saved = existing
+    if saved is None and endpoint_path.is_file():
+        saved = json.loads(endpoint_path.read_text(encoding="utf-8"))
+    backend_port, https_port = _remote_ports(status, saved)
     backend_url = f"http://{HOST}:{backend_port}"
+    previous_proxy = _serve_handler_proxy(status, _tailscale_dns_name(), https_port)
 
     runtime = remote_runtime_dir()
     runtime.mkdir(parents=True, exist_ok=True)
@@ -3571,7 +3608,7 @@ def remote_start() -> dict[str, object]:
         _write_remote_state(state)
         return state
     except Exception:
-        if serve_configured:
+        if serve_configured and previous_proxy is None:
             try:
                 _tailscale_command("serve", f"--https={https_port}", "off")
             except RuntimeError:
@@ -3582,6 +3619,31 @@ def remote_start() -> dict[str, object]:
     finally:
         stdout_file.close()
         stderr_file.close()
+
+
+def _remote_ports(status: dict[str, object], saved: dict[str, object] | None) -> tuple[int, int]:
+    """Keep a project's published URL stable; never silently move on conflict."""
+    if saved is None:
+        return _find_free_backend_port(status), _find_free_tailscale_port(status)
+    if saved.get("project_root") != str(PROJECT_ROOT):
+        raise RuntimeError("Saved endpoint belongs to a different project.")
+    backend = saved.get("backend_port")
+    https = saved.get("https_port")
+    if (type(backend) is not int or type(https) is not int
+            or not 8765 <= backend < 8800
+            or not (9443 <= https < 9500 or 10443 <= https < 10500)):
+        raise RuntimeError("Saved endpoint ports are invalid.")
+    url = f"http://{HOST}:{backend}"
+    if saved.get("backend_url") != url:
+        raise RuntimeError("Saved backend URL does not match its port.")
+    proxy = _serve_handler_proxy(status, _tailscale_dns_name(), https)
+    if proxy != url and https in _tailscale_used_ports(status):
+        raise RuntimeError("Saved HTTPS port belongs to another service; refusing to move or overwrite it.")
+    if proxy is None and backend in _tailscale_proxy_ports(status):
+        raise RuntimeError("Saved backend port is reserved by another Serve entry.")
+    if not _port_is_free(HOST, backend):
+        raise RuntimeError("Saved backend port is busy; refusing to choose another port.")
+    return backend, https
 
 
 def remote_status() -> dict[str, object]:
@@ -3659,6 +3721,14 @@ def remote_stop() -> dict[str, object]:
     if isinstance(pid, int) and _process_is_alive(pid):
         _stop_process(pid)
 
+    # Preserve only endpoint ownership/ports across an explicit stop/start.
+    endpoint = {key: state[key] for key in (
+        "project_root", "backend_port", "https_port", "backend_url"
+    )}
+    endpoint_path = remote_runtime_dir() / "remote-endpoint.json"
+    temporary = endpoint_path.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps(endpoint, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(endpoint_path)
     remote_state_path().unlink(missing_ok=True)
     return {
         "stopped": True,

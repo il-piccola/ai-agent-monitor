@@ -6,9 +6,25 @@
 - Visibility: public
 - Default branch: `main`
 - Formal release: `v1.0.0` published
-- Development package version: `1.6.12`
+- Development package version: `1.6.13`
 - Completed phases: 1 through 18
-- Current work: active-project use and UI refinements, including the Phase 20 real-project reply path; Phase 19 remains deferred at the human's request
+- Current work: active-project operation; Phase 20 reply verification is recorded below. Phase 19 remains deferred at the human's request.
+
+## 現在の運用状態（2026-10-29、過去の記録より優先）
+
+- 1.6.13をN100へ導入。188件のテストが成功。
+- 本体は8765/9443で復旧し、共通CLIのremote管理へ移行。5案件ともWindowsログオン時の自動起動を登録済み。
+- 各案件のバックエンド/HTTPSは、本体8765/9443、nashiri-core 8766/9444、moonlight-bamboo 8778/9456、sleep-improvement-app 8779/9457、nashiri-laboratory 8780/9458。
+- 5案件の個別画面とプロジェクト識別APIをN100から確認。HTTPSはすべて200、remote statusのbackend_alive/tailscale_activeはすべてtrue。
+- nashiri-coreの古いPID情報は、待受プロセスとプロジェクトIDを確認したうえで再起動し更新済み。
+- 本体プロセスを停止して、Serve設定を残した状態から同じ8765/9443に復帰することを実機確認。各案件のログオン用スクリプトを実行してもPIDは変わらず、二重起動なし。
+- 旧Monitor用と履歴で確認できた9445〜9450の転送設定を、転送先に待受がないことを確認して削除。それ以外のServe設定は変更なし。9451〜9455は所有元を確定できず維持。
+- 一覧のリンクも現在の個別URLへ更新済み。
+- 実際のWindows再起動後のログオンと、iPhoneからの今回の表示確認は未実施。
+
+再発防止: 起動時に古いremote.jsonを削除して別ポートを選ぶ処理を修正。再起動時は保存されたポートを再利用し、競合時は状態を保存してエラー終了する。明示的なstopでもremote-endpoint.jsonにポートを保持する。すでに本人確認できるバックエンドが動いていれば二重起動しない。HTTPによる識別のタイムアウトを1秒から5秒へ延長した。
+
+残る確認: 次回の通常ログオン後の復帰、iPhoneからの表示、所有元未確定の転送設定の調査。Phase 19は保留を継続する。
 
 Version 1.6.11 fixes the dashboard's project-to-project telemetry mismatch: all ten known automatic-measurement slots now remain in the same order, with `—` when no source record exists. The Codex API-equivalent estimate and account-wide weekly balance are enabled for `ai-agent-monitor`, `nashiri-core`, `sleep-improvement-app`, and `moonlight-bamboo`. Project-specific values still come from each project's own records; a missing active task never produces an invented elapsed time. All 175 N100 tests and the dashboard JavaScript syntax check passed. The installed CLI was updated to 1.6.11, and all four Monitor URLs returned HTTP 200 on their original 9443–9446 ports. Headless Chromium at 900px and 390px confirmed identical section order, ten telemetry labels, two Codex cards, and card heights across the four projects. Each project's cost API returned a ready amount; the weekly balance was ready and consistent across all four. During the update, an orphaned old `nashiri-core` backend kept the uv tool environment locked; its project ID, process tree, and 8766 listener were verified before that old backend alone was stopped. The registered Monitor was then restored at 8766/9444. Existing game Serve entries were not changed. iPhone Safari was not tested in this pass.
 
